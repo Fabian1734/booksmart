@@ -48,9 +48,9 @@ const btnSecondary: React.CSSProperties = {
 };
 
 const bots = [
-  { name: 'Lernender Leo', level: 1, accuracy: 0.3, emoji: '🐣' },
-  { name: 'Wissbegierige Mia', level: 2, accuracy: 0.55, emoji: '📖' },
-  { name: 'Professor Max', level: 3, accuracy: 0.8, emoji: '🎓' },
+  { name: 'Hauskatze Mausi', level: 1, accuracy: 0.3, emoji: '🐣' },
+  { name: 'Mama Bear', level: 2, accuracy: 0.55, emoji: '📖' },
+  { name: 'Professor Maxim', level: 3, accuracy: 0.8, emoji: '🎓' },
 ];
 
 function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: number): string {
