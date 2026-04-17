@@ -45,41 +45,80 @@ const btnSecondary: React.CSSProperties = {
   border: '2px solid #6B1E2E',
 };
 
-function Quiz({ category, userId, onFinish }: { category: any, userId: string, onFinish: () => void }) {
+const bots = [
+  { name: 'Lernender Leo', level: 1, accuracy: 0.3, emoji: '🐣' },
+  { name: 'Wissbegierige Mia', level: 2, accuracy: 0.55, emoji: '📖' },
+  { name: 'Professor Max', level: 3, accuracy: 0.8, emoji: '🎓' },
+];
+
+function BotDuelResult({ userCorrect, botCorrect, total, botName, botEmoji, category, onBack }: any) {
+  const userPct = Math.round((userCorrect / total) * 100);
+  const botPct = Math.round((botCorrect / total) * 100);
+  const won = userCorrect > botCorrect;
+  const draw = userCorrect === botCorrect;
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Georgia, serif' }}>
+      <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+        <div style={{ fontSize: '52px', marginBottom: '16px' }}>{won ? '🏆' : draw ? '🤝' : '📚'}</div>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px' }}>
+          {won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}
+        </h2>
+        <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '14px', letterSpacing: '1px' }}>{category.name.toUpperCase()}</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
+          <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '24px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>👤</div>
+            <div style={{ fontSize: '13px', color: colors.muted, letterSpacing: '1px', marginBottom: '8px' }}>DU</div>
+            <div style={{ fontSize: '36px', fontWeight: 'bold', color: colors.primary }}>{userPct}%</div>
+            <div style={{ fontSize: '13px', color: colors.muted }}>{userCorrect}/{total} richtig</div>
+          </div>
+          <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '24px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>{botEmoji}</div>
+            <div style={{ fontSize: '13px', color: colors.muted, letterSpacing: '1px', marginBottom: '8px' }}>{botName.toUpperCase()}</div>
+            <div style={{ fontSize: '36px', fontWeight: 'bold', color: colors.primary }}>{botPct}%</div>
+            <div style={{ fontSize: '13px', color: colors.muted }}>{botCorrect}/{total} richtig</div>
+          </div>
+        </div>
+
+        <button style={btnPrimary} onClick={onBack}>Zurück zum Dashboard</button>
+      </div>
+    </div>
+  );
+}
+
+function Quiz({ category, userId, botAccuracy, botName, botEmoji, onFinish }: any) {
   const [questions, setQuestions] = useState<any[]>([]);
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [correct, setCorrect] = useState(0);
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [botCorrect, setBotCorrect] = useState(0);
 
   useEffect(() => {
-    const fetchQuestions = async () => {
-      const { data } = await supabase
-        .from('questions')
-        .select('*')
-        .eq('category_id', category.id)
-        .limit(10);
+    supabase.from('questions').select('*').eq('category_id', category.id).limit(10).then(({ data }) => {
       setQuestions(data || []);
       setLoading(false);
-    };
-    fetchQuestions();
+    });
   }, [category]);
 
   const handleAnswer = async (answer: string) => {
     if (selected) return;
     setSelected(answer);
     const isCorrect = answer === questions[current].correct_answer;
-    if (isCorrect) setCorrect(c => c + 1);
+    const newCorrect = isCorrect ? correct + 1 : correct;
+    if (isCorrect) setCorrect(newCorrect);
 
     setTimeout(async () => {
       if (current + 1 >= questions.length) {
-        const points = isCorrect ? correct + 1 : correct;
+        const botScore = questions.reduce((acc) => acc + (Math.random() < botAccuracy ? 1 : 0), 0);
+        setBotCorrect(botScore);
         await supabase.from('scores').insert({
           user_id: userId,
           category_id: category.id,
-          points: points * 10,
-          correct_count: points,
+          points: newCorrect * 10,
+          correct_count: newCorrect,
           total_questions: questions.length,
         });
         setDone(true);
@@ -103,70 +142,43 @@ function Quiz({ category, userId, onFinish }: { category: any, userId: string, o
     </div>
   );
 
-  if (done) {
-    const total = questions.length;
-    const pct = Math.round((correct / total) * 100);
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-        <div style={{ textAlign: 'center', maxWidth: '500px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📚</div>
-          <h2 style={{ color: colors.primary, fontFamily: 'Georgia, serif', letterSpacing: '2px', marginBottom: '8px' }}>QUIZ BEENDET</h2>
-          <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', marginBottom: '32px' }}>{category.name}</p>
-          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '32px', borderRadius: '4px', marginBottom: '32px' }}>
-            <div style={{ fontSize: '52px', fontWeight: 'bold', color: colors.primary, fontFamily: 'Georgia, serif' }}>{pct}%</div>
-            <p style={{ color: colors.text, fontFamily: 'Georgia, serif', margin: '8px 0 0' }}>{correct} von {total} Fragen richtig</p>
-          </div>
-          <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
-        </div>
-      </div>
-    );
-  }
+  if (done) return (
+    <BotDuelResult
+      userCorrect={correct}
+      botCorrect={botCorrect}
+      total={questions.length}
+      botName={botName}
+      botEmoji={botEmoji}
+      category={category}
+      onBack={onFinish}
+    />
+  );
 
   const q = questions[current];
   const options = q.type === 'true_false'
     ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
-    : [
-        { key: 'A', label: q.option_a },
-        { key: 'B', label: q.option_b },
-        { key: 'C', label: q.option_c },
-        { key: 'D', label: q.option_d },
-      ].filter(o => o.label);
+    : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif', padding: '20px' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', paddingTop: '40px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <span style={{ color: colors.muted, fontSize: '13px', letterSpacing: '1px' }}>{category.name.toUpperCase()}</span>
+          <span style={{ color: colors.muted, fontSize: '13px', letterSpacing: '1px' }}>DUELL vs. {botName.toUpperCase()}</span>
           <span style={{ color: colors.muted, fontSize: '13px' }}>{current + 1} / {questions.length}</span>
         </div>
         <div style={{ height: '4px', backgroundColor: colors.light, borderRadius: '2px', marginBottom: '40px' }}>
           <div style={{ height: '4px', backgroundColor: colors.primary, borderRadius: '2px', width: `${((current + 1) / questions.length) * 100}%`, transition: 'width 0.3s' }} />
         </div>
-
         <p style={{ fontSize: '20px', color: colors.text, lineHeight: '1.6', marginBottom: '32px' }}>{q.question_text}</p>
-
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {options.map(opt => {
-            let bg = '#FDFAF5';
-            let border = '1px solid #C9B99A';
-            let color = colors.text;
+            let bg = '#FDFAF5', border = '1px solid #C9B99A', color = colors.text;
             if (selected) {
               if (opt.key === q.correct_answer) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; color = '#2E7D32'; }
               else if (opt.key === selected) { bg = '#FDECEA'; border = '1px solid #E53935'; color = '#B71C1C'; }
             }
             return (
-              <button key={opt.key} onClick={() => handleAnswer(opt.key)} style={{
-                padding: '16px 20px',
-                backgroundColor: bg,
-                border,
-                color,
-                fontSize: '16px',
-                fontFamily: 'Georgia, serif',
-                cursor: selected ? 'default' : 'pointer',
-                borderRadius: '4px',
-                textAlign: 'left',
-                transition: 'all 0.2s',
-              }}>
+              <button key={opt.key} onClick={() => handleAnswer(opt.key)} style={{ padding: '16px 20px', backgroundColor: bg, border, color, fontSize: '16px', fontFamily: 'Georgia, serif', cursor: selected ? 'default' : 'pointer', borderRadius: '4px', textAlign: 'left', transition: 'all 0.2s' }}>
                 <span style={{ fontWeight: 'bold', marginRight: '12px' }}>{opt.key}.</span>{opt.label}
               </button>
             );
@@ -178,24 +190,73 @@ function Quiz({ category, userId, onFinish }: { category: any, userId: string, o
 }
 
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
-  const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [view, setView] = useState<'home' | 'selectCategory' | 'selectBot' | 'quiz'>('home');
   const [categories, setCategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [selectedBot, setSelectedBot] = useState<any>(null);
 
   useEffect(() => {
     supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
   }, []);
 
   const icons: Record<string, string> = {
-    'Weltgeschichte': '🌍',
-    'Antike Geschichte': '🏛️',
-    'Schweizer Geschichte': '🇨🇭',
-    'Philosophie & Denker': '💭',
-    'Biografien': '📖',
-    'Wirtschaftsgeschichte': '📈',
+    'Weltgeschichte': '🌍', 'Antike Geschichte': '🏛️', 'Schweizer Geschichte': '🇨🇭',
+    'Philosophie & Denker': '💭', 'Biografien': '📖', 'Wirtschaftsgeschichte': '📈',
   };
 
-  if (selectedCategory) return (
-    <Quiz category={selectedCategory} userId={user.id} onFinish={() => setSelectedCategory(null)} />
+  if (view === 'quiz') return (
+    <Quiz
+      category={selectedCategory}
+      userId={user.id}
+      botAccuracy={selectedBot.accuracy}
+      botName={selectedBot.name}
+      botEmoji={selectedBot.emoji}
+      onFinish={() => setView('home')}
+    />
+  );
+
+  if (view === 'selectBot') return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif', padding: '20px' }}>
+      <div style={{ maxWidth: '700px', margin: '0 auto', paddingTop: '40px' }}>
+        <button onClick={() => setView('selectCategory')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '32px', padding: 0 }}>← Zurück</button>
+        <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '8px', fontWeight: 'normal' }}>Wähle deinen Gegner</h2>
+        <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '32px' }}>{selectedCategory?.name}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {bots.map(bot => (
+            <div key={bot.name} onClick={() => { setSelectedBot(bot); setView('quiz'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '24px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '20px' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = colors.primary)}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '#C9B99A')}>
+              <div style={{ fontSize: '36px' }}>{bot.emoji}</div>
+              <div>
+                <div style={{ color: colors.text, fontSize: '17px', marginBottom: '4px' }}>{bot.name}</div>
+                <div style={{ color: colors.muted, fontSize: '13px' }}>
+                  {bot.level === 1 ? 'Einfach — ca. 30% richtige Antworten' : bot.level === 2 ? 'Mittel — ca. 55% richtige Antworten' : 'Schwer — ca. 80% richtige Antworten'}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (view === 'selectCategory') return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif', padding: '20px' }}>
+      <div style={{ maxWidth: '700px', margin: '0 auto', paddingTop: '40px' }}>
+        <button onClick={() => setView('home')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '32px', padding: 0 }}>← Zurück</button>
+        <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+          {categories.map(cat => (
+            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectBot'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '24px', cursor: 'pointer', borderRadius: '4px' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = colors.primary)}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '#C9B99A')}>
+              <div style={{ fontSize: '28px', marginBottom: '8px' }}>{icons[cat.name] || '📚'}</div>
+              <div style={{ color: colors.text, fontSize: '15px' }}>{cat.name}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 
   return (
@@ -205,24 +266,22 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
           <h1 style={{ color: colors.primary, letterSpacing: '2px', margin: 0, fontSize: '28px' }}>BOOKSMART</h1>
           <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px' }}>Abmelden</button>
         </div>
-        <p style={{ color: colors.muted, fontSize: '14px', letterSpacing: '1px', marginBottom: '32px' }}>WILLKOMMEN ZURÜCK</p>
-        <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-          {categories.map((cat) => (
-            <div key={cat.id} onClick={() => setSelectedCategory(cat)} style={{
-              backgroundColor: '#FDFAF5',
-              border: '1px solid #C9B99A',
-              padding: '24px',
-              cursor: 'pointer',
-              borderRadius: '4px',
-            }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = colors.primary)}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = '#C9B99A')}
-            >
-              <div style={{ fontSize: '28px', marginBottom: '8px' }}>{icons[cat.name] || '📚'}</div>
-              <div style={{ color: colors.text, fontSize: '15px' }}>{cat.name}</div>
-            </div>
-          ))}
+        <p style={{ color: colors.muted, fontSize: '14px', letterSpacing: '1px', marginBottom: '40px' }}>WILLKOMMEN ZURÜCK</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div onClick={() => setView('selectCategory')} style={{ backgroundColor: colors.primary, padding: '32px 24px', cursor: 'pointer', borderRadius: '4px' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
+            <div style={{ fontSize: '32px', marginBottom: '12px' }}>⚔️</div>
+            <div style={{ color: '#F5F0E8', fontSize: '17px', letterSpacing: '1px', marginBottom: '8px' }}>DUELL STARTEN</div>
+            <div style={{ color: '#C9A0AC', fontSize: '13px' }}>Tritt gegen einen Bot an</div>
+          </div>
+
+          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '32px 24px', borderRadius: '4px', opacity: 0.5 }}>
+            <div style={{ fontSize: '32px', marginBottom: '12px' }}>🏆</div>
+            <div style={{ color: colors.text, fontSize: '17px', letterSpacing: '1px', marginBottom: '8px' }}>HIGHSCORES</div>
+            <div style={{ color: colors.muted, fontSize: '13px' }}>Bald verfügbar</div>
+          </div>
         </div>
       </div>
     </div>
@@ -239,39 +298,28 @@ function App() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
-    });
-    supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
+    supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
   }, []);
 
   const handleLogin = async () => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setError(error.message);
     setLoading(false);
   };
 
   const handleRegister = async () => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) { setError(error.message); setLoading(false); return; }
-    if (data.user) {
-      await supabase.from('profiles').insert({ id: data.user.id, username });
-    }
-    setLoading(false);
-    setMode('login');
+    if (data.user) await supabase.from('profiles').insert({ id: data.user.id, username });
+    setLoading(false); setMode('login');
     setError('Registrierung erfolgreich! Bitte anmelden.');
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setMode('home');
+    await supabase.auth.signOut(); setUser(null); setMode('home');
   };
 
   if (user) return <Dashboard user={user} onLogout={handleLogout} />;
