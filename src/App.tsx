@@ -60,6 +60,7 @@ const bots = [
 // Aber asynchron: Challenger spielt R1 → Opponent R1+R2 → Challenger R2+R3 → Opponent R3+R4 → Challenger R4
 const QUESTIONS_PER_ROUND = 5;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: number): string {
   if (Math.random() < accuracy) return correctAnswer;
   const wrong = optionKeys.filter(o => o !== correctAnswer);
@@ -205,8 +206,8 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
   const [done, setDone] = useState(false);
   const [myTotalScore, setMyTotalScore] = useState(0);
   const [botTotalScore, setBotTotalScore] = useState(0);
-
-  const isChallenger = duel.challenger_id === userId;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const isChallenger = duel.challenger_id === userId;
   const opponentName = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.name || 'Bot' : 'Gegner';
   const opponentEmoji = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.emoji || '🤖' : '👤';
   const botAccuracy = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.accuracy || 0.5 : 0;
@@ -377,7 +378,6 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     }).select().single();
     if (data) {
       setActiveDuel(data);
-      setSelectedBot(bot);
       setView('duel');
     }
   };
