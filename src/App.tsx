@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 
 const colors = {
@@ -9,6 +9,87 @@ const colors = {
   light: '#E8DFD0',
 };
 
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '14px 16px',
+  fontSize: '16px',
+  border: '1px solid #C9B99A',
+  backgroundColor: '#FDFAF5',
+  color: '#3D2B1F',
+  fontFamily: 'Georgia, serif',
+  boxSizing: 'border-box',
+  borderRadius: '2px',
+  marginBottom: '12px',
+  outline: 'none',
+};
+
+const btnPrimary: React.CSSProperties = {
+  width: '100%',
+  padding: '16px',
+  backgroundColor: '#6B1E2E',
+  color: '#F5F0E8',
+  fontSize: '16px',
+  border: 'none',
+  cursor: 'pointer',
+  letterSpacing: '2px',
+  textTransform: 'uppercase',
+  fontFamily: 'Georgia, serif',
+  borderRadius: '2px',
+  marginBottom: '12px',
+};
+
+const btnSecondary: React.CSSProperties = {
+  ...btnPrimary,
+  backgroundColor: 'transparent',
+  color: '#6B1E2E',
+  border: '2px solid #6B1E2E',
+};
+
+function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
+  const categories = [
+    { name: 'Weltgeschichte', icon: '🌍' },
+    { name: 'Antike Geschichte', icon: '🏛️' },
+    { name: 'Schweizer Geschichte', icon: '🇨🇭' },
+    { name: 'Philosophie & Denker', icon: '💭' },
+    { name: 'Biografien', icon: '📖' },
+    { name: 'Wirtschaftsgeschichte', icon: '📈' },
+  ];
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif', padding: '20px' }}>
+      <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px', paddingTop: '20px' }}>
+          <h1 style={{ color: colors.primary, letterSpacing: '2px', margin: 0, fontSize: '28px' }}>BOOKSMART</h1>
+          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px' }}>Abmelden</button>
+        </div>
+
+        <p style={{ color: colors.muted, fontSize: '14px', letterSpacing: '1px', marginBottom: '32px' }}>WILLKOMMEN ZURÜCK</p>
+
+        <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+          {categories.map((cat) => (
+            <div key={cat.name} style={{
+              backgroundColor: '#FDFAF5',
+              border: '1px solid #C9B99A',
+              padding: '24px',
+              cursor: 'pointer',
+              borderRadius: '4px',
+              transition: 'all 0.2s',
+            }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = colors.primary)}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '#C9B99A')}
+            >
+              <div style={{ fontSize: '28px', marginBottom: '8px' }}>{cat.icon}</div>
+              <div style={{ color: colors.text, fontSize: '15px', letterSpacing: '0.5px' }}>{cat.name}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [mode, setMode] = useState<'home' | 'login' | 'register'>('home');
   const [email, setEmail] = useState('');
@@ -16,6 +97,16 @@ function App() {
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+    });
+    supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+  }, []);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -38,41 +129,13 @@ function App() {
     setError('Registrierung erfolgreich! Bitte anmelden.');
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '14px 16px',
-    fontSize: '16px',
-    border: '1px solid #C9B99A',
-    backgroundColor: '#FDFAF5',
-    color: colors.text,
-    fontFamily: 'Georgia, serif',
-    boxSizing: 'border-box',
-    borderRadius: '2px',
-    marginBottom: '12px',
-    outline: 'none',
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setMode('home');
   };
 
-  const btnPrimary: React.CSSProperties = {
-    width: '100%',
-    padding: '16px',
-    backgroundColor: colors.primary,
-    color: '#F5F0E8',
-    fontSize: '16px',
-    border: 'none',
-    cursor: 'pointer',
-    letterSpacing: '2px',
-    textTransform: 'uppercase',
-    fontFamily: 'Georgia, serif',
-    borderRadius: '2px',
-    marginBottom: '12px',
-  };
-
-  const btnSecondary: React.CSSProperties = {
-    ...btnPrimary,
-    backgroundColor: 'transparent',
-    color: colors.primary,
-    border: `2px solid ${colors.primary}`,
-  };
+  if (user) return <Dashboard user={user} onLogout={handleLogout} />;
 
   if (mode === 'login') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
