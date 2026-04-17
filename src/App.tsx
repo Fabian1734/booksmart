@@ -187,30 +187,52 @@ function QuizRound({ questions, roundNumber, totalRounds, onRoundComplete }: {
 
 function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
   const [questions, setQuestions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [currentRound, setCurrentRound] = useState(1);
   const [roundScores, setRoundScores] = useState<number[]>([]);
+  const [roundSubcategories, setRoundSubcategories] = useState<any[]>([]);
   const [done, setDone] = useState(false);
   const [myTotalScore, setMyTotalScore] = useState(0);
   const [botTotalScore, setBotTotalScore] = useState(0);
+  const [phase, setPhase] = useState<'selectSub' | 'playing'>('selectSub');
+  const [availableSubs, setAvailableSubs] = useState<any[]>([]);
 
   const opponentName = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.name || 'Bot' : 'Gegner';
   const opponentEmoji = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.emoji || '🤖' : '👤';
   const botAccuracy = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.accuracy || 0.5 : 0;
   const totalRounds = 4;
 
+  const userChoosesThisRound = currentRound === 1 || currentRound === 3;
+
   useEffect(() => {
-    const fetchQuestions = async () => {
-      const { data } = await supabase
-        .from('questions')
-        .select('*')
-        .eq('subcategory_id', duel.subcategory_id)
-        .limit(QUESTIONS_PER_ROUND * totalRounds);
-      setQuestions(data || []);
-      setLoading(false);
+    supabase.from('subcategories').select('*').eq('category_id', duel.category_id).then(({ data }) => {
+      setAvailableSubs(data || []);
+    });
+  }, [duel.category_id]);
+
+  useEffect(() => {
+    const autoPickForBot = async () => {
+      if (phase === 'selectSub' && !userChoosesThisRound && availableSubs.length > 0) {
+        const randomSub = availableSubs[Math.floor(Math.random() * availableSubs.length)];
+        await loadQuestionsForSub(randomSub);
+      }
     };
-    fetchQuestions();
-  }, [duel]);
+    autoPickForBot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, userChoosesThisRound, availableSubs, currentRound]);
+
+  const loadQuestionsForSub = async (sub: any) => {
+    setLoading(true);
+    setRoundSubcategories(prev => [...prev, sub]);
+    const { data } = await supabase
+      .from('questions')
+      .select('*')
+      .eq('subcategory_id', sub.id)
+      .limit(QUESTIONS_PER_ROUND);
+    setQuestions(data || []);
+    setLoading(false);
+    setPhase('playing');
+  };
 
   const handleRoundComplete = async (correct: number) => {
     const newRoundScores = [...roundScores, correct];
@@ -218,6 +240,8 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 
     if (currentRound < totalRounds) {
       setCurrentRound(r => r + 1);
+      setPhase('selectSub');
+      setQuestions([]);
     } else {
       const myTotal = newRoundScores.reduce((a, b) => a + b, 0);
       setMyTotalScore(myTotal);
@@ -248,19 +272,6 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
     }
   };
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', letterSpacing: '2px' }}>LADEN...</p>
-    </div>
-  );
-
-  if (questions.length < QUESTIONS_PER_ROUND) return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', marginBottom: '24px', textAlign: 'center' }}>Noch zu wenige Fragen in dieser Subkategorie.<br />Bitte zuerst Fragen hinzufügen.</p>
-      <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück</button>
-    </div>
-  );
-
   if (done) {
     const won = myTotalScore > botTotalScore;
     const draw = myTotalScore === botTotalScore;
@@ -276,9 +287,12 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 
           <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '24px', textAlign: 'left' }}>
             {roundScores.map((s, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < roundScores.length - 1 ? '1px solid #E8DFD0' : 'none' }}>
-                <span style={{ color: colors.muted, fontSize: '13px' }}>Runde {i + 1}</span>
-                <span style={{ color: colors.text, fontSize: '13px', fontWeight: 'bold' }}>{s}/{QUESTIONS_PER_ROUND} richtig</span>
+              <div key={i} style={{ padding: '8px 0', borderBottom: i < roundScores.length - 1 ? '1px solid #E8DFD0' : 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span style={{ color: colors.text, fontSize: '13px', fontWeight: 'bold' }}>Runde {i + 1}</span>
+                  <span style={{ color: colors.text, fontSize: '13px', fontWeight: 'bold' }}>{s}/{QUESTIONS_PER_ROUND} richtig</span>
+                </div>
+                <div style={{ color: colors.muted, fontSize: '12px' }}>{roundSubcategories[i]?.name}</div>
               </div>
             ))}
           </div>
@@ -303,44 +317,77 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
     );
   }
 
-  const roundQuestions = questions.slice((currentRound - 1) * QUESTIONS_PER_ROUND, currentRound * QUESTIONS_PER_ROUND);
+  if (phase === 'selectSub') {
+    if (!userChoosesThisRound) {
+      return (
+        <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif' }}>
+          <p style={{ color: colors.muted, letterSpacing: '2px' }}>{opponentName.split(' ')[1]?.toUpperCase() || 'GEGNER'} WÄHLT...</p>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
+        <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
+          <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px', marginTop: '20px' }}>RUNDE {currentRound} VON {totalRounds}</p>
+          <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Du wählst das Thema</h2>
+          <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Für diese Runde</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {availableSubs.map(sub => (
+              <div key={sub.id} onClick={() => loadQuestionsForSub(sub)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px 20px', cursor: 'pointer', borderRadius: '4px', color: colors.text, fontSize: '15px' }}>
+                {sub.name}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', letterSpacing: '2px' }}>LADEN...</p>
+    </div>
+  );
+
+  if (questions.length < QUESTIONS_PER_ROUND) return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
+      <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', marginBottom: '24px', textAlign: 'center' }}>Zu wenige Fragen in "{roundSubcategories[currentRound - 1]?.name}".<br />Bitte zuerst Fragen hinzufügen.</p>
+      <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück zum Dashboard</button>
+    </div>
+  );
 
   return (
-    <QuizRound
-      questions={roundQuestions}
-      roundNumber={currentRound}
-      totalRounds={totalRounds}
-      onRoundComplete={handleRoundComplete}
-    />
+    <div>
+      <div style={{ backgroundColor: colors.light, padding: '8px 16px', fontFamily: 'Georgia, serif', textAlign: 'center' }}>
+        <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>
+          {roundSubcategories[currentRound - 1]?.name.toUpperCase()} · {userChoosesThisRound ? 'DEINE WAHL' : `${(opponentName.split(' ')[1] || 'GEGNER').toUpperCase()} HAT GEWÄHLT`}
+        </span>
+      </div>
+      <QuizRound
+        questions={questions}
+        roundNumber={currentRound}
+        totalRounds={totalRounds}
+        onRoundComplete={handleRoundComplete}
+      />
+    </div>
   );
 }
 
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
-  const [view, setView] = useState<'home' | 'selectCategory' | 'selectSub' | 'selectOpponent' | 'duel' | 'highscores'>('home');
+  const [view, setView] = useState<'home' | 'selectCategory' | 'selectOpponent' | 'duel' | 'highscores'>('home');
   const [categories, setCategories] = useState<any[]>([]);
-  const [subcategories, setSubcategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
-  const [selectedSub, setSelectedSub] = useState<any>(null);
   const [activeDuel, setActiveDuel] = useState<any>(null);
 
   useEffect(() => {
     supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
   }, []);
 
-  useEffect(() => {
-    if (selectedCategory) {
-      supabase.from('subcategories').select('*').eq('category_id', selectedCategory.id).then(({ data }) => setSubcategories(data || []));
-    }
-  }, [selectedCategory]);
-
   const icons: Record<string, string> = {
     'Geschichte der Schweiz': '🇨🇭',
     'Philosophie & Denker': '💭',
     'Weltgeschichte': '🌍',
-    'Schweizer Geschichte': '🇨🇭',
-    'Antike Geschichte': '🏛️',
-    'Biografien': '📖',
-    'Wirtschaftsgeschichte': '📈',
   };
 
   const startBotDuel = async (bot: any) => {
@@ -349,7 +396,6 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       opponent_is_bot: true,
       bot_level: bot.level,
       category_id: selectedCategory.id,
-      subcategory_id: selectedSub.id,
       status: 'challenger_turn',
     }).select().single();
     if (data) {
@@ -366,9 +412,9 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   if (view === 'selectOpponent') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={() => setView('selectSub')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <button onClick={() => setView('selectCategory')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Wähle deinen Gegner</h2>
-        <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>{selectedSub?.name}</p>
+        <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>{selectedCategory?.name}</p>
 
         <p style={{ color: colors.text, fontSize: '14px', marginBottom: '12px', letterSpacing: '1px' }}>GEGEN EINEN BOT</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '32px' }}>
@@ -391,31 +437,15 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     </div>
   );
 
-  if (view === 'selectSub') return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
-      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={() => setView('selectCategory')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>{selectedCategory?.name}</h2>
-        <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Wähle ein Thema</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {subcategories.map(sub => (
-            <div key={sub.id} onClick={() => { setSelectedSub(sub); setView('selectOpponent'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px 20px', cursor: 'pointer', borderRadius: '4px', color: colors.text, fontSize: '15px' }}>
-              {sub.name}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
   if (view === 'selectCategory') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
         <button onClick={() => setView('home')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
+        <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '20px' }}>Das Thema pro Runde wählst du später im Duell</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {categories.map(cat => (
-            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectSub'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectOpponent'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ fontSize: '28px' }}>{icons[cat.name] || '📚'}</div>
               <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
             </div>
