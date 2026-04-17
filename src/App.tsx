@@ -45,15 +45,158 @@ const btnSecondary: React.CSSProperties = {
   border: '2px solid #6B1E2E',
 };
 
+function Quiz({ category, userId, onFinish }: { category: any, userId: string, onFinish: () => void }) {
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [current, setCurrent] = useState(0);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [correct, setCorrect] = useState(0);
+  const [done, setDone] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchQuestions = async () => {
+      const { data } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('category_id', category.id)
+        .limit(10);
+      setQuestions(data || []);
+      setLoading(false);
+    };
+    fetchQuestions();
+  }, [category]);
+
+  const handleAnswer = async (answer: string) => {
+    if (selected) return;
+    setSelected(answer);
+    const isCorrect = answer === questions[current].correct_answer;
+    if (isCorrect) setCorrect(c => c + 1);
+
+    setTimeout(async () => {
+      if (current + 1 >= questions.length) {
+        const points = isCorrect ? correct + 1 : correct;
+        await supabase.from('scores').insert({
+          user_id: userId,
+          category_id: category.id,
+          points: points * 10,
+          correct_count: points,
+          total_questions: questions.length,
+        });
+        setDone(true);
+      } else {
+        setCurrent(c => c + 1);
+        setSelected(null);
+      }
+    }, 1000);
+  };
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', letterSpacing: '2px' }}>LADEN...</p>
+    </div>
+  );
+
+  if (questions.length === 0) return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+      <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', marginBottom: '24px' }}>Noch keine Fragen in dieser Kategorie.</p>
+      <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück</button>
+    </div>
+  );
+
+  if (done) {
+    const total = questions.length;
+    const pct = Math.round((correct / total) * 100);
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+        <div style={{ textAlign: 'center', maxWidth: '500px' }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📚</div>
+          <h2 style={{ color: colors.primary, fontFamily: 'Georgia, serif', letterSpacing: '2px', marginBottom: '8px' }}>QUIZ BEENDET</h2>
+          <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', marginBottom: '32px' }}>{category.name}</p>
+          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '32px', borderRadius: '4px', marginBottom: '32px' }}>
+            <div style={{ fontSize: '52px', fontWeight: 'bold', color: colors.primary, fontFamily: 'Georgia, serif' }}>{pct}%</div>
+            <p style={{ color: colors.text, fontFamily: 'Georgia, serif', margin: '8px 0 0' }}>{correct} von {total} Fragen richtig</p>
+          </div>
+          <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
+        </div>
+      </div>
+    );
+  }
+
+  const q = questions[current];
+  const options = q.type === 'true_false'
+    ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
+    : [
+        { key: 'A', label: q.option_a },
+        { key: 'B', label: q.option_b },
+        { key: 'C', label: q.option_c },
+        { key: 'D', label: q.option_d },
+      ].filter(o => o.label);
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif', padding: '20px' }}>
+      <div style={{ maxWidth: '600px', margin: '0 auto', paddingTop: '40px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <span style={{ color: colors.muted, fontSize: '13px', letterSpacing: '1px' }}>{category.name.toUpperCase()}</span>
+          <span style={{ color: colors.muted, fontSize: '13px' }}>{current + 1} / {questions.length}</span>
+        </div>
+        <div style={{ height: '4px', backgroundColor: colors.light, borderRadius: '2px', marginBottom: '40px' }}>
+          <div style={{ height: '4px', backgroundColor: colors.primary, borderRadius: '2px', width: `${((current + 1) / questions.length) * 100}%`, transition: 'width 0.3s' }} />
+        </div>
+
+        <p style={{ fontSize: '20px', color: colors.text, lineHeight: '1.6', marginBottom: '32px' }}>{q.question_text}</p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {options.map(opt => {
+            let bg = '#FDFAF5';
+            let border = '1px solid #C9B99A';
+            let color = colors.text;
+            if (selected) {
+              if (opt.key === q.correct_answer) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; color = '#2E7D32'; }
+              else if (opt.key === selected) { bg = '#FDECEA'; border = '1px solid #E53935'; color = '#B71C1C'; }
+            }
+            return (
+              <button key={opt.key} onClick={() => handleAnswer(opt.key)} style={{
+                padding: '16px 20px',
+                backgroundColor: bg,
+                border,
+                color,
+                fontSize: '16px',
+                fontFamily: 'Georgia, serif',
+                cursor: selected ? 'default' : 'pointer',
+                borderRadius: '4px',
+                textAlign: 'left',
+                transition: 'all 0.2s',
+              }}>
+                <span style={{ fontWeight: 'bold', marginRight: '12px' }}>{opt.key}.</span>{opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
-  const categories = [
-    { name: 'Weltgeschichte', icon: '🌍' },
-    { name: 'Antike Geschichte', icon: '🏛️' },
-    { name: 'Schweizer Geschichte', icon: '🇨🇭' },
-    { name: 'Philosophie & Denker', icon: '💭' },
-    { name: 'Biografien', icon: '📖' },
-    { name: 'Wirtschaftsgeschichte', icon: '📈' },
-  ];
+  const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [categories, setCategories] = useState<any[]>([]);
+
+  useEffect(() => {
+    supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
+  }, []);
+
+  const icons: Record<string, string> = {
+    'Weltgeschichte': '🌍',
+    'Antike Geschichte': '🏛️',
+    'Schweizer Geschichte': '🇨🇭',
+    'Philosophie & Denker': '💭',
+    'Biografien': '📖',
+    'Wirtschaftsgeschichte': '📈',
+  };
+
+  if (selectedCategory) return (
+    <Quiz category={selectedCategory} userId={user.id} onFinish={() => setSelectedCategory(null)} />
+  );
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif', padding: '20px' }}>
@@ -62,26 +205,22 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
           <h1 style={{ color: colors.primary, letterSpacing: '2px', margin: 0, fontSize: '28px' }}>BOOKSMART</h1>
           <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px' }}>Abmelden</button>
         </div>
-
         <p style={{ color: colors.muted, fontSize: '14px', letterSpacing: '1px', marginBottom: '32px' }}>WILLKOMMEN ZURÜCK</p>
-
         <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
-
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
           {categories.map((cat) => (
-            <div key={cat.name} style={{
+            <div key={cat.id} onClick={() => setSelectedCategory(cat)} style={{
               backgroundColor: '#FDFAF5',
               border: '1px solid #C9B99A',
               padding: '24px',
               cursor: 'pointer',
               borderRadius: '4px',
-              transition: 'all 0.2s',
             }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = colors.primary)}
               onMouseLeave={e => (e.currentTarget.style.borderColor = '#C9B99A')}
             >
-              <div style={{ fontSize: '28px', marginBottom: '8px' }}>{cat.icon}</div>
-              <div style={{ color: colors.text, fontSize: '15px', letterSpacing: '0.5px' }}>{cat.name}</div>
+              <div style={{ fontSize: '28px', marginBottom: '8px' }}>{icons[cat.name] || '📚'}</div>
+              <div style={{ color: colors.text, fontSize: '15px' }}>{cat.name}</div>
             </div>
           ))}
         </div>
