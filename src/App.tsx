@@ -51,9 +51,9 @@ const bots = [
   { name: 'Professor Max', level: 3, accuracy: 0.8, emoji: '🎓' },
 ];
 
-function getBotAnswer(options: string[], correctAnswer: string, accuracy: number): string {
+function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: number): string {
   if (Math.random() < accuracy) return correctAnswer;
-  const wrong = options.filter(o => o !== correctAnswer);
+  const wrong = optionKeys.filter(o => o !== correctAnswer);
   return wrong[Math.floor(Math.random() * wrong.length)];
 }
 
@@ -112,10 +112,9 @@ function Quiz({ category, userId, bot, onFinish }: any) {
   const handleAnswer = async (answer: string) => {
     if (selected) return;
 
-    const q = questions[current];
     const options = q.type === 'true_false'
-      ? ['Wahr', 'Falsch']
-      : [q.option_a, q.option_b, q.option_c, q.option_d].filter(Boolean);
+    ? ['Wahr', 'Falsch']
+    : ['A', 'B', 'C', 'D'];
 
     const bAnswer = getBotAnswer(options, q.correct_answer, bot.accuracy);
     const userIsCorrect = answer === q.correct_answer;
