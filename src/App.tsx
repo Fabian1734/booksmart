@@ -308,7 +308,7 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotalScore}</div>
-              <div style={{ fontSize: '12px', color: colors.muted' }}>von {totalQ} richtig</div>
+              <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
             <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>{opponentEmoji}</div>
