@@ -80,8 +80,28 @@ function parseCSV(text: string): CSVQuestion[] {
   const headers = lines[0].split(',').map(h => h.trim());
   const questions: CSVQuestion[] = [];
 
+  const parseLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map(v => v.trim());
+    if (!lines[i].trim()) continue;
+    const values = parseLine(lines[i]);
     const q: any = {};
     headers.forEach((header, idx) => {
       q[header] = values[idx] || '';
