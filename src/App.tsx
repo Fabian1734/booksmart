@@ -53,7 +53,13 @@ const bots = [
   { name: 'Professor Fabian', level: 3, accuracy: 0.8, emoji: '🎓' },
 ];
 
-const QUESTIONS_PER_ROUND = 5;
+const QUESTIONS_PER_ROUND = 3;
+
+function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: number): string {
+  if (Math.random() < accuracy) return correctAnswer;
+  const wrong = optionKeys.filter(o => o !== correctAnswer);
+  return wrong[Math.floor(Math.random() * wrong.length)];
+}
 
 function Highscores({ onBack }: { onBack: () => void }) {
   const [scores, setScores] = useState<any[]>([]);
@@ -118,29 +124,44 @@ function Highscores({ onBack }: { onBack: () => void }) {
   );
 }
 
-function QuizRound({ questions, roundNumber, totalRounds, onRoundComplete }: {
-  questions: any[], roundNumber: number, totalRounds: number,
-  onRoundComplete: (correct: number) => void
+function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }: {
+  questions: any[], roundNumber: number, totalRounds: number, bot: any,
+  onRoundComplete: (userAnswers: boolean[], botAnswers: boolean[]) => void
 }) {
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
-  const [correct, setCorrect] = useState(0);
+  const [botAnswer, setBotAnswer] = useState<string | null>(null);
+  const [showResult, setShowResult] = useState(false);
+  const [userAnswers, setUserAnswers] = useState<boolean[]>([]);
+  const [botAnswers, setBotAnswers] = useState<boolean[]>([]);
 
   const handleAnswer = (answer: string) => {
     if (selected) return;
-    const isCorrect = answer === questions[current].correct_answer;
     setSelected(answer);
-    const newCorrect = isCorrect ? correct + 1 : correct;
-    if (isCorrect) setCorrect(newCorrect);
 
     setTimeout(() => {
-      if (current + 1 >= questions.length) {
-        onRoundComplete(newCorrect);
-      } else {
-        setCurrent(c => c + 1);
-        setSelected(null);
-      }
-    }, 1200);
+      const q = questions[current];
+      const optionKeys = q.type === 'true_false' ? ['Wahr', 'Falsch'] : ['A', 'B', 'C', 'D'];
+      const bAnswer = getBotAnswer(optionKeys, q.correct_answer, bot.accuracy);
+      const userIsCorrect = answer === q.correct_answer;
+      const botIsCorrect = bAnswer === q.correct_answer;
+
+      setBotAnswer(bAnswer);
+      setShowResult(true);
+      setUserAnswers(prev => [...prev, userIsCorrect]);
+      setBotAnswers(prev => [...prev, botIsCorrect]);
+
+      setTimeout(() => {
+        if (current + 1 >= questions.length) {
+          onRoundComplete([...userAnswers, userIsCorrect], [...botAnswers, botIsCorrect]);
+        } else {
+          setCurrent(c => c + 1);
+          setSelected(null);
+          setBotAnswer(null);
+          setShowResult(false);
+        }
+      }, 1500);
+    }, 1000);
   };
 
   const q = questions[current];
@@ -162,20 +183,37 @@ function QuizRound({ questions, roundNumber, totalRounds, onRoundComplete }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {options.map(opt => {
             const isCorrect = opt.key === q.correct_answer;
-            const isSelected = opt.key === selected;
+            const isUserSelected = opt.key === selected;
+            const isBotSelected = opt.key === botAnswer;
             let bg = '#FDFAF5', border = '1px solid #C9B99A', color = colors.text;
-            if (selected) {
-              if (isCorrect) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; color = '#2E7D32'; }
-              else if (isSelected) { bg = '#FDECEA'; border = '1px solid #E53935'; color = '#B71C1C'; }
+
+            if (isUserSelected && !showResult) {
+              bg = '#E8DFD0';
+              border = '2px solid ' + colors.primary;
             }
+
+            if (showResult) {
+              if (isCorrect) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; color = '#2E7D32'; }
+              else if (isUserSelected) { bg = '#FDECEA'; border = '1px solid #E53935'; color = '#B71C1C'; }
+            }
+
             return (
               <button key={opt.key} onClick={() => handleAnswer(opt.key)} style={{
                 padding: '14px 16px', backgroundColor: bg, border, color,
                 fontSize: 'clamp(14px, 3.5vw, 16px)', fontFamily: 'Georgia, serif',
                 cursor: selected ? 'default' : 'pointer', borderRadius: '4px',
                 textAlign: 'left', minHeight: '52px', WebkitTapHighlightColor: 'transparent',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
-                <span style={{ fontWeight: 'bold', marginRight: '10px' }}>{opt.key}.</span>{opt.label}
+                <span style={{ flex: 1, paddingRight: '8px' }}>
+                  <span style={{ fontWeight: 'bold', marginRight: '10px' }}>{opt.key}.</span>{opt.label}
+                </span>
+                {showResult && (isUserSelected || isBotSelected) && (
+                  <span style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                    {isUserSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>👤</span>}
+                    {isBotSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>{bot.emoji}</span>}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -185,23 +223,57 @@ function QuizRound({ questions, roundNumber, totalRounds, onRoundComplete }: {
   );
 }
 
+function IntermediateScore({ myScore, botScore, myTotal, botTotal, roundsPlayed, onContinue }: {
+  myScore: number, botScore: number, myTotal: number, botTotal: number, roundsPlayed: number, onContinue: () => void
+}) {
+  const questionsPerRound = QUESTIONS_PER_ROUND;
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Georgia, serif' }}>
+      <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+        <div style={{ fontSize: '42px', marginBottom: '16px' }}>📊</div>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>
+          NACH {roundsPlayed} RUNDEN
+        </h2>
+        <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>ZWISCHENSTAND</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '32px' }}>
+          <div style={{ backgroundColor: '#FDFAF5', border: '2px solid #C9B99A', padding: '20px 12px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
+            <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
+            <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotal}</div>
+            <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * questionsPerRound} richtig</div>
+          </div>
+          <div style={{ backgroundColor: '#FDFAF5', border: '2px solid #C9B99A', padding: '20px 12px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '20px', marginBottom: '6px' }}>{bots.find(b => b.level === 1)?.emoji || '🤖'}</div>
+            <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>GEGNER</div>
+            <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
+            <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * questionsPerRound} richtig</div>
+          </div>
+        </div>
+
+        <button style={btnPrimary} onClick={onContinue}>Weiter</button>
+      </div>
+    </div>
+  );
+}
+
 function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentRound, setCurrentRound] = useState(1);
-  const [roundScores, setRoundScores] = useState<number[]>([]);
+  const [roundUserAnswers, setRoundUserAnswers] = useState<boolean[][]>([]);
+  const [roundBotAnswers, setRoundBotAnswers] = useState<boolean[][]>([]);
   const [roundSubcategories, setRoundSubcategories] = useState<any[]>([]);
   const [done, setDone] = useState(false);
-  const [myTotalScore, setMyTotalScore] = useState(0);
-  const [botTotalScore, setBotTotalScore] = useState(0);
-  const [phase, setPhase] = useState<'selectSub' | 'playing'>('selectSub');
+  const [phase, setPhase] = useState<'selectSub' | 'announcement' | 'playing' | 'intermediate'>('selectSub');
   const [availableSubs, setAvailableSubs] = useState<any[]>([]);
+  const [announcementSub, setAnnouncementSub] = useState<any>(null);
 
   const opponentName = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.name || 'Bot' : 'Gegner';
   const opponentEmoji = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.emoji || '🤖' : '👤';
   const botAccuracy = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.accuracy || 0.5 : 0;
+  const bot = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level) : { name: 'Gegner', emoji: '👤', accuracy: 0.5 };
   const totalRounds = 4;
-
   const userChoosesThisRound = currentRound === 1 || currentRound === 3;
 
   useEffect(() => {
@@ -214,7 +286,11 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
     const autoPickForBot = async () => {
       if (phase === 'selectSub' && !userChoosesThisRound && availableSubs.length > 0) {
         const randomSub = availableSubs[Math.floor(Math.random() * availableSubs.length)];
-        await loadQuestionsForSub(randomSub);
+        setAnnouncementSub(randomSub);
+        setPhase('announcement');
+        setTimeout(() => {
+          loadQuestionsForSub(randomSub);
+        }, 4000);
       }
     };
     autoPickForBot();
@@ -234,48 +310,56 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
     setPhase('playing');
   };
 
-  const handleRoundComplete = async (correct: number) => {
-    const newRoundScores = [...roundScores, correct];
-    setRoundScores(newRoundScores);
+  const handleRoundComplete = async (userAnswers: boolean[], botAnswers: boolean[]) => {
+    const newRoundUserAnswers = [...roundUserAnswers, userAnswers];
+    const newRoundBotAnswers = [...roundBotAnswers, botAnswers];
+    setRoundUserAnswers(newRoundUserAnswers);
+    setRoundBotAnswers(newRoundBotAnswers);
+
+    const myTotal = newRoundUserAnswers.flat().filter(Boolean).length;
+    const botTotal = newRoundBotAnswers.flat().filter(Boolean).length;
 
     if (currentRound < totalRounds) {
-      setCurrentRound(r => r + 1);
-      setPhase('selectSub');
-      setQuestions([]);
-    } else {
-      const myTotal = newRoundScores.reduce((a, b) => a + b, 0);
-      setMyTotalScore(myTotal);
-
-      if (duel.opponent_is_bot) {
-        let botTotal = 0;
-        for (let i = 0; i < totalRounds * QUESTIONS_PER_ROUND; i++) {
-          if (Math.random() < botAccuracy) botTotal++;
-        }
-        setBotTotalScore(botTotal);
-
-        await supabase.from('scores').insert({
-          user_id: userId,
-          category_id: duel.category_id,
-          points: myTotal * 10,
-          correct_count: myTotal,
-          total_questions: totalRounds * QUESTIONS_PER_ROUND,
-        });
-
-        await supabase.from('duels').update({
-          status: 'completed',
-          challenger_score: myTotal,
-          opponent_score: botTotal,
-          completed_at: new Date().toISOString(),
-        }).eq('id', duel.id);
+      if (currentRound === 2 || currentRound === 4) {
+        setPhase('intermediate');
+      } else {
+        setCurrentRound(r => r + 1);
+        setPhase('selectSub');
+        setQuestions([]);
       }
+    } else {
+      await supabase.from('scores').insert({
+        user_id: userId,
+        category_id: duel.category_id,
+        points: myTotal * 10,
+        correct_count: myTotal,
+        total_questions: totalRounds * QUESTIONS_PER_ROUND,
+      });
+
+      await supabase.from('duels').update({
+        status: 'completed',
+        challenger_score: myTotal,
+        opponent_score: botTotal,
+        completed_at: new Date().toISOString(),
+      }).eq('id', duel.id);
+
       setDone(true);
     }
   };
 
+  const handleIntermediateContinue = () => {
+    setCurrentRound(r => r + 1);
+    setPhase('selectSub');
+    setQuestions([]);
+  };
+
   if (done) {
-    const won = myTotalScore > botTotalScore;
-    const draw = myTotalScore === botTotalScore;
+    const myTotal = roundUserAnswers.flat().filter(Boolean).length;
+    const botTotal = roundBotAnswers.flat().filter(Boolean).length;
     const totalQ = totalRounds * QUESTIONS_PER_ROUND;
+    const won = myTotal > botTotal;
+    const draw = myTotal === botTotal;
+
     return (
       <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Georgia, serif' }}>
         <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
@@ -285,33 +369,71 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
           </h2>
           <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
 
-          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '24px', textAlign: 'left' }}>
-            {roundScores.map((s, i) => (
-              <div key={i} style={{ padding: '8px 0', borderBottom: i < roundScores.length - 1 ? '1px solid #E8DFD0' : 'none' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                  <span style={{ color: colors.text, fontSize: '13px', fontWeight: 'bold' }}>Runde {i + 1}</span>
-                  <span style={{ color: colors.text, fontSize: '13px', fontWeight: 'bold' }}>{s}/{QUESTIONS_PER_ROUND} richtig</span>
-                </div>
-                <div style={{ color: colors.muted, fontSize: '12px' }}>{roundSubcategories[i]?.name}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '32px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
             <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
-              <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotalScore}</div>
+              <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotal}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
             <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>{opponentEmoji}</div>
-              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>{opponentName.split(' ')[1]?.toUpperCase() || opponentName.toUpperCase()}</div>
-              <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotalScore}</div>
+              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>{opponentName.split(' ')[1]?.toUpperCase() || 'GEGNER'}</div>
+              <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
           </div>
+
+          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '24px' }}>
+            {roundUserAnswers.map((userRound, roundIdx) => (
+              <div key={roundIdx} style={{ marginBottom: roundIdx < roundUserAnswers.length - 1 ? '16px' : 0, paddingBottom: roundIdx < roundUserAnswers.length - 1 ? '16px' : 0, borderBottom: roundIdx < roundUserAnswers.length - 1 ? '1px solid #E8DFD0' : 'none' }}>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Runde {roundIdx + 1} · {roundSubcategories[roundIdx]?.name}</div>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '4px' }}>👤 Du</div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {userRound.map((correct, qIdx) => (
+                        <div key={qIdx} style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: correct ? '#4CAF50' : '#E53935', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'white' }}>
+                          {correct ? '✓' : '✗'}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '4px' }}>{opponentEmoji} {opponentName.split(' ')[1] || 'Gegner'}</div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {roundBotAnswers[roundIdx].map((correct, qIdx) => (
+                        <div key={qIdx} style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: correct ? '#4CAF50' : '#E53935', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'white' }}>
+                          {correct ? '✓' : '✗'}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
           <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'intermediate') {
+    const myTotal = roundUserAnswers.flat().filter(Boolean).length;
+    const botTotal = roundBotAnswers.flat().filter(Boolean).length;
+    return <IntermediateScore myScore={0} botScore={0} myTotal={myTotal} botTotal={botTotal} roundsPlayed={currentRound} onContinue={handleIntermediateContinue} />;
+  }
+
+  if (phase === 'announcement' && announcementSub) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', padding: '20px' }}>
+        <div style={{ textAlign: 'center', maxWidth: '500px' }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>{opponentEmoji}</div>
+          <h2 style={{ color: colors.primary, fontSize: 'clamp(18px, 5vw, 22px)', marginBottom: '12px', letterSpacing: '1px' }}>{opponentName.toUpperCase()}</h2>
+          <p style={{ color: colors.text, fontSize: '16px', marginBottom: '8px' }}>hat gewählt:</p>
+          <p style={{ color: colors.primary, fontSize: 'clamp(18px, 4vw, 20px)', fontWeight: 'bold', letterSpacing: '1px' }}>{announcementSub.name}</p>
         </div>
       </div>
     );
@@ -368,6 +490,7 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
         questions={questions}
         roundNumber={currentRound}
         totalRounds={totalRounds}
+        bot={bot}
         onRoundComplete={handleRoundComplete}
       />
     </div>
