@@ -93,7 +93,7 @@ function parseCSV(text: string): CSVQuestion[] {
 }
 
 function AdminImport({ onBack }: { onBack: () => void }) {
-  const [csvText, setCsvText] = useState('');
+  const [, setCsvText] = useState('');
   const [questions, setQuestions] = useState<CSVQuestion[]>([]);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState('');
