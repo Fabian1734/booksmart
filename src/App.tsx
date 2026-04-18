@@ -16,7 +16,7 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #C9B99A',
   backgroundColor: '#FDFAF5',
   color: '#3D2B1F',
-  fontFamily: 'Georgia, serif',
+  fontFamily: 'Helvetica, Arial, sans-serif',
   boxSizing: 'border-box',
   borderRadius: '2px',
   marginBottom: '12px',
@@ -34,7 +34,7 @@ const btnPrimary: React.CSSProperties = {
   cursor: 'pointer',
   letterSpacing: '2px',
   textTransform: 'uppercase',
-  fontFamily: 'Georgia, serif',
+  fontFamily: 'Helvetica, Arial, sans-serif',
   borderRadius: '2px',
   marginBottom: '12px',
   WebkitTapHighlightColor: 'transparent',
@@ -191,7 +191,7 @@ function AdminImport({ onBack }: { onBack: () => void }) {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>FRAGEN IMPORTIEREN</h2>
 
         <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px' }}>
@@ -207,7 +207,7 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
           </p>
         </div>
 
-        <input type="file" accept=".csv" onChange={handleFileUpload} style={{ marginBottom: '24px', fontFamily: 'Georgia, serif' }} />
+        <input type="file" accept=".csv" onChange={handleFileUpload} style={{ marginBottom: '24px', fontFamily: 'Helvetica, Arial, sans-serif' }} />
 
         {questions.length > 0 && (
           <>
@@ -271,14 +271,14 @@ function Highscores({ onBack }: { onBack: () => void }) {
   const medal = (i: number) => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>HIGHSCORES</h2>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
-          <button onClick={() => setSelectedCategory('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '13px', backgroundColor: selectedCategory === 'all' ? colors.primary : colors.light, color: selectedCategory === 'all' ? '#F5F0E8' : colors.text }}>Alle</button>
+          <button onClick={() => setSelectedCategory('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === 'all' ? colors.primary : colors.light, color: selectedCategory === 'all' ? '#F5F0E8' : colors.text }}>Alle</button>
           {categories.map(cat => (
-            <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '13px', backgroundColor: selectedCategory === cat.id ? colors.primary : colors.light, color: selectedCategory === cat.id ? '#F5F0E8' : colors.text }}>{cat.name}</button>
+            <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === cat.id ? colors.primary : colors.light, color: selectedCategory === cat.id ? '#F5F0E8' : colors.text }}>{cat.name}</button>
           ))}
         </div>
         {loading ? <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p> : scores.length === 0 ? (
@@ -351,7 +351,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
     : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingTop: '12px' }}>
           <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>RUNDE {roundNumber} VON {totalRounds}</span>
@@ -381,7 +381,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
             return (
               <button key={opt.key} onClick={() => handleAnswer(opt.key)} style={{
                 padding: '14px 16px', backgroundColor: bg, border, color,
-                fontSize: 'clamp(14px, 3.5vw, 16px)', fontFamily: 'Georgia, serif',
+                fontSize: 'clamp(14px, 3.5vw, 16px)', fontFamily: 'Helvetica, Arial, sans-serif',
                 cursor: selected ? 'default' : 'pointer', borderRadius: '4px',
                 textAlign: 'left', minHeight: '52px', WebkitTapHighlightColor: 'transparent',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -409,7 +409,7 @@ function IntermediateScore({ myScore, botScore, myTotal, botTotal, roundsPlayed,
 }) {
   const questionsPerRound = QUESTIONS_PER_ROUND;
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Georgia, serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
         <div style={{ fontSize: '42px', marginBottom: '16px' }}>📊</div>
         <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>
@@ -541,7 +541,7 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
     const draw = myTotal === botTotal;
 
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Georgia, serif' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
         <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
           <div style={{ fontSize: '52px', marginBottom: '16px' }}>{won ? '🏆' : draw ? '🤝' : '📚'}</div>
           <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>
@@ -608,7 +608,7 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 
   if (phase === 'announcement' && announcementSub) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', padding: '20px' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif', padding: '20px' }}>
         <div style={{ textAlign: 'center', maxWidth: '500px' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>{opponentEmoji}</div>
           <h2 style={{ color: colors.primary, fontSize: 'clamp(18px, 5vw, 22px)', marginBottom: '12px', letterSpacing: '1px' }}>{opponentName.toUpperCase()}</h2>
@@ -622,14 +622,14 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
   if (phase === 'selectSub') {
     if (!userChoosesThisRound) {
       return (
-        <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif' }}>
+        <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif' }}>
           <p style={{ color: colors.muted, letterSpacing: '2px' }}>{opponentName.split(' ')[1]?.toUpperCase() || 'GEGNER'} WÄHLT...</p>
         </div>
       );
     }
 
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
         <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
           <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px', marginTop: '20px' }}>RUNDE {currentRound} VON {totalRounds}</p>
           <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Du wählst das Thema</h2>
@@ -648,20 +648,20 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', letterSpacing: '2px' }}>LADEN...</p>
+      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
     </div>
   );
 
   if (questions.length < QUESTIONS_PER_ROUND) return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Georgia, serif', marginBottom: '24px', textAlign: 'center' }}>Zu wenige Fragen in "{roundSubcategories[currentRound - 1]?.name}".<br />Bitte zuerst Fragen hinzufügen.</p>
+      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', marginBottom: '24px', textAlign: 'center' }}>Zu wenige Fragen in "{roundSubcategories[currentRound - 1]?.name}".<br />Bitte zuerst Fragen hinzufügen.</p>
       <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück zum Dashboard</button>
     </div>
   );
 
   return (
     <div>
-      <div style={{ backgroundColor: colors.light, padding: '8px 16px', fontFamily: 'Georgia, serif', textAlign: 'center' }}>
+      <div style={{ backgroundColor: colors.light, padding: '8px 16px', fontFamily: 'Helvetica, Arial, sans-serif', textAlign: 'center' }}>
         <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>
           {roundSubcategories[currentRound - 1]?.name.toUpperCase()} · {userChoosesThisRound ? 'DEINE WAHL' : `${(opponentName.split(' ')[1] || 'GEGNER').toUpperCase()} HAT GEWÄHLT`}
         </span>
@@ -718,9 +718,9 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   if (view === 'admin') return <AdminImport onBack={() => setView('home')} />;
 
   if (view === 'selectOpponent') return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={() => setView('selectCategory')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <button onClick={() => setView('selectCategory')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Wähle deinen Gegner</h2>
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>{selectedCategory?.name}</p>
 
@@ -746,9 +746,9 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   );
 
   if (view === 'selectCategory') return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={() => setView('home')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <button onClick={() => setView('home')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '20px' }}>Das Thema pro Runde wählst du später im Duell</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -764,11 +764,11 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   );
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', paddingTop: '12px' }}>
           <h1 style={{ color: colors.primary, letterSpacing: '2px', margin: 0, fontSize: 'clamp(20px, 5vw, 28px)' }}>BOOKSMART</h1>
-          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px' }}>Abmelden</button>
+          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px' }}>Abmelden</button>
         </div>
         <p style={{ color: colors.muted, fontSize: '13px', letterSpacing: '1px', marginBottom: '32px' }}>WILLKOMMEN ZURÜCK</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -834,7 +834,7 @@ function App() {
   if (mode === 'login') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
-        <h2 style={{ textAlign: 'center', color: colors.primary, fontFamily: 'Georgia, serif', letterSpacing: '2px', marginBottom: '32px' }}>ANMELDEN</h2>
+        <h2 style={{ textAlign: 'center', color: colors.primary, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px', marginBottom: '32px' }}>ANMELDEN</h2>
         {error && <p style={{ color: error.includes('erfolgreich') ? 'green' : 'red', textAlign: 'center', marginBottom: '16px', fontSize: '14px' }}>{error}</p>}
         <input style={inputStyle} placeholder="E-Mail" value={email} onChange={e => setEmail(e.target.value)} type="email" />
         <input style={inputStyle} placeholder="Passwort" value={password} onChange={e => setPassword(e.target.value)} type="password" />
@@ -848,7 +848,7 @@ function App() {
   if (mode === 'register') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
-        <h2 style={{ textAlign: 'center', color: colors.primary, fontFamily: 'Georgia, serif', letterSpacing: '2px', marginBottom: '32px' }}>REGISTRIEREN</h2>
+        <h2 style={{ textAlign: 'center', color: colors.primary, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px', marginBottom: '32px' }}>REGISTRIEREN</h2>
         {error && <p style={{ color: 'red', textAlign: 'center', marginBottom: '16px', fontSize: '14px' }}>{error}</p>}
         <input style={inputStyle} placeholder="Benutzername" value={username} onChange={e => setUsername(e.target.value)} />
         <input style={inputStyle} placeholder="E-Mail" value={email} onChange={e => setEmail(e.target.value)} type="email" />
@@ -861,7 +861,7 @@ function App() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
         <div style={{ fontSize: '48px', marginBottom: '8px' }}>📚</div>
         <h1 style={{ fontSize: 'clamp(36px, 10vw, 52px)', fontWeight: 'bold', color: colors.primary, margin: '0 0 8px 0', letterSpacing: '2px' }}>BOOKSMART</h1>
