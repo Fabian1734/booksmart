@@ -61,6 +61,167 @@ function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: num
   return wrong[Math.floor(Math.random() * wrong.length)];
 }
 
+interface CSVQuestion {
+  question_text: string;
+  type: 'multiple_choice' | 'true_false';
+  correct_answer: string;
+  option_a?: string;
+  option_b?: string;
+  option_c?: string;
+  option_d?: string;
+  difficulty: number;
+  category_name: string;
+  subcategory_name: string;
+  book_title: string;
+}
+
+function parseCSV(text: string): CSVQuestion[] {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  const questions: CSVQuestion[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map(v => v.trim());
+    const q: any = {};
+    headers.forEach((header, idx) => {
+      q[header] = values[idx] || '';
+    });
+    q.difficulty = parseInt(q.difficulty) || 1;
+    questions.push(q as CSVQuestion);
+  }
+  return questions;
+}
+
+function AdminImport({ onBack }: { onBack: () => void }) {
+  const [csvText, setCsvText] = useState('');
+  const [questions, setQuestions] = useState<CSVQuestion[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState('');
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      setCsvText(text);
+      try {
+        const parsed = parseCSV(text);
+        setQuestions(parsed);
+        setResult('');
+      } catch (err) {
+        setResult('Fehler beim Parsen der CSV-Datei.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImport = async () => {
+    if (questions.length === 0) return;
+    setImporting(true);
+    setResult('');
+
+    try {
+      // Hole alle Kategorien, Subkategorien und Bücher
+      const { data: categories } = await supabase.from('categories').select('id, name');
+      const { data: subcategories } = await supabase.from('subcategories').select('id, name, category_id');
+      const { data: books } = await supabase.from('books').select('id, title');
+
+      const catMap = new Map(categories?.map(c => [c.name, c.id]) || []);
+      const subMap = new Map(subcategories?.map(s => [s.name, s.id]) || []);
+      const bookMap = new Map(books?.map(b => [b.title, b.id]) || []);
+
+      const toInsert = questions.map(q => {
+        const categoryId = catMap.get(q.category_name);
+        const subcategoryId = subMap.get(q.subcategory_name);
+        const bookId = bookMap.get(q.book_title);
+
+        if (!categoryId || !subcategoryId || !bookId) {
+          throw new Error(`Kategorie, Subkategorie oder Buch nicht gefunden für: ${q.question_text.substring(0, 50)}...`);
+        }
+
+        return {
+          category_id: categoryId,
+          subcategory_id: subcategoryId,
+          book_id: bookId,
+          question_text: q.question_text,
+          type: q.type,
+          correct_answer: q.correct_answer,
+          option_a: q.option_a || null,
+          option_b: q.option_b || null,
+          option_c: q.option_c || null,
+          option_d: q.option_d || null,
+          difficulty: q.difficulty,
+        };
+      });
+
+      const { error } = await supabase.from('questions').insert(toInsert);
+      if (error) throw error;
+
+      setResult(`✅ ${toInsert.length} Fragen erfolgreich importiert!`);
+      setQuestions([]);
+      setCsvText('');
+    } catch (err: any) {
+      setResult(`❌ Fehler: ${err.message}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
+      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Georgia, serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>FRAGEN IMPORTIEREN</h2>
+
+        <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px' }}>
+          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px' }}>CSV-Format:</h3>
+          <pre style={{ fontSize: '12px', color: colors.muted, overflowX: 'auto', backgroundColor: colors.light, padding: '12px', borderRadius: '4px' }}>
+{`question_text,type,correct_answer,option_a,option_b,option_c,option_d,difficulty,category_name,subcategory_name,book_title
+Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,Alte Eidgenossenschaft,Marignano`}
+          </pre>
+          <p style={{ fontSize: '13px', color: colors.muted, marginTop: '12px' }}>
+            <strong>type:</strong> multiple_choice oder true_false<br />
+            <strong>correct_answer:</strong> A, B, C, D oder Wahr/Falsch<br />
+            <strong>difficulty:</strong> 1 (leicht), 2 (mittel), 3 (schwer)
+          </p>
+        </div>
+
+        <input type="file" accept=".csv" onChange={handleFileUpload} style={{ marginBottom: '24px', fontFamily: 'Georgia, serif' }} />
+
+        {questions.length > 0 && (
+          <>
+            <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px' }}>Preview: {questions.length} Fragen</h3>
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                {questions.slice(0, 5).map((q, i) => (
+                  <div key={i} style={{ padding: '12px 0', borderBottom: i < 4 ? `1px solid ${colors.light}` : 'none' }}>
+                    <div style={{ fontSize: '14px', color: colors.text, marginBottom: '4px' }}>{q.question_text}</div>
+                    <div style={{ fontSize: '12px', color: colors.muted' }}>
+                      {q.category_name} → {q.subcategory_name} → {q.book_title}
+                    </div>
+                  </div>
+                ))}
+                {questions.length > 5 && <div style={{ fontSize: '12px', color: colors.muted, paddingTop: '12px' }}>... und {questions.length - 5} weitere</div>}
+              </div>
+            </div>
+
+            <button style={btnPrimary} onClick={handleImport} disabled={importing}>
+              {importing ? 'Importiere...' : `${questions.length} Fragen importieren`}
+            </button>
+          </>
+        )}
+
+        {result && (
+          <div style={{ backgroundColor: result.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${result.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
+            {result}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Highscores({ onBack }: { onBack: () => void }) {
   const [scores, setScores] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -497,14 +658,18 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 }
 
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
-  const [view, setView] = useState<'home' | 'selectCategory' | 'selectOpponent' | 'duel' | 'highscores'>('home');
+  const [view, setView] = useState<'home' | 'selectCategory' | 'selectOpponent' | 'duel' | 'highscores' | 'admin'>('home');
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [activeDuel, setActiveDuel] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
-  }, []);
+    supabase.from('profiles').select('is_admin').eq('id', user.id).single().then(({ data }) => {
+      setIsAdmin(data?.is_admin || false);
+    });
+  }, [user.id]);
 
   const icons: Record<string, string> = {
     'Geschichte der Schweiz': '🇨🇭',
@@ -530,6 +695,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     <DuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('home'); }} />
   );
   if (view === 'highscores') return <Highscores onBack={() => setView('home')} />;
+  if (view === 'admin') return <AdminImport onBack={() => setView('home')} />;
 
   if (view === 'selectOpponent') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Georgia, serif' }}>
@@ -596,6 +762,13 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
             <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>HIGHSCORES</div>
             <div style={{ color: colors.muted, fontSize: '12px' }}>Beste Spieler anzeigen</div>
           </div>
+          {isAdmin && (
+            <div onClick={() => setView('admin')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer', gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: '28px', marginBottom: '10px' }}>⚙️</div>
+              <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>ADMIN: FRAGEN IMPORTIEREN</div>
+              <div style={{ color: colors.muted, fontSize: '12px' }}>CSV-Upload für Masseneingabe</div>
+            </div>
+          )}
         </div>
       </div>
     </div>
