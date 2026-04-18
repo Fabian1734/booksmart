@@ -252,6 +252,7 @@ function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) 
   useEffect(() => {
     loadFriends();
     loadPendingRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const loadFriends = async () => {
