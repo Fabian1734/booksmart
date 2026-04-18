@@ -142,7 +142,6 @@ function AdminImport({ onBack }: { onBack: () => void }) {
     setResult('');
 
     try {
-      // Hole alle Kategorien, Subkategorien und Bücher
       const { data: categories } = await supabase.from('categories').select('id, name');
       const { data: subcategories } = await supabase.from('subcategories').select('id, name, category_id');
       const { data: books } = await supabase.from('books').select('id, title');
@@ -235,6 +234,159 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
         {result && (
           <div style={{ backgroundColor: result.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${result.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
             {result}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) {
+  const [searchEmail, setSearchEmail] = useState('');
+  const [searchResult, setSearchResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [friends, setFriends] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadFriends();
+    loadPendingRequests();
+  }, [userId]);
+
+  const loadFriends = async () => {
+    const { data } = await supabase
+      .from('friendships')
+      .select('*, requester:profiles!friendships_requester_id_fkey(id, username, email), addressee:profiles!friendships_addressee_id_fkey(id, username, email)')
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+      .eq('status', 'accepted');
+    setFriends(data || []);
+  };
+
+  const loadPendingRequests = async () => {
+    const { data } = await supabase
+      .from('friendships')
+      .select('*, requester:profiles!friendships_requester_id_fkey(id, username, email)')
+      .eq('addressee_id', userId)
+      .eq('status', 'pending');
+    setPendingRequests(data || []);
+  };
+
+  const handleSearch = async () => {
+    if (!searchEmail.trim()) return;
+    setLoading(true);
+    setMessage('');
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, username, email')
+      .eq('email', searchEmail.trim())
+      .single();
+    
+    if (error || !data) {
+      setMessage('Kein User mit dieser E-Mail gefunden.');
+      setSearchResult(null);
+    } else if (data.id === userId) {
+      setMessage('Das bist du selbst!');
+      setSearchResult(null);
+    } else {
+      setSearchResult(data);
+    }
+    setLoading(false);
+  };
+
+  const sendFriendRequest = async () => {
+    if (!searchResult) return;
+    const { error } = await supabase.from('friendships').insert({
+      requester_id: userId,
+      addressee_id: searchResult.id,
+      status: 'pending',
+    });
+    if (error) {
+      setMessage('Freundschaftsanfrage konnte nicht gesendet werden.');
+    } else {
+      setMessage('✅ Freundschaftsanfrage gesendet!');
+      setSearchResult(null);
+      setSearchEmail('');
+    }
+  };
+
+  const acceptRequest = async (friendshipId: string) => {
+    await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
+    loadFriends();
+    loadPendingRequests();
+  };
+
+  const rejectRequest = async (friendshipId: string) => {
+    await supabase.from('friendships').delete().eq('id', friendshipId);
+    loadPendingRequests();
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>SPIELER SUCHEN</h2>
+
+        <div style={{ marginBottom: '32px' }}>
+          <input 
+            style={inputStyle} 
+            placeholder="E-Mail-Adresse eingeben" 
+            value={searchEmail} 
+            onChange={e => setSearchEmail(e.target.value)}
+            type="email"
+          />
+          <button style={btnPrimary} onClick={handleSearch} disabled={loading}>
+            {loading ? 'Suche...' : 'Suchen'}
+          </button>
+        </div>
+
+        {message && (
+          <div style={{ backgroundColor: message.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginBottom: '24px', fontSize: '14px' }}>
+            {message}
+          </div>
+        )}
+
+        {searchResult && (
+          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '32px' }}>
+            <div style={{ fontSize: '18px', color: colors.text, marginBottom: '8px' }}>{searchResult.username}</div>
+            <div style={{ fontSize: '14px', color: colors.muted, marginBottom: '20px' }}>{searchResult.email}</div>
+            <button style={btnPrimary} onClick={sendFriendRequest}>Freundschaftsanfrage senden</button>
+            <button style={btnSecondary}>Zum Duell herausfordern</button>
+          </div>
+        )}
+
+        {pendingRequests.length > 0 && (
+          <div style={{ marginBottom: '32px' }}>
+            <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px', letterSpacing: '1px' }}>ANFRAGEN</h3>
+            {pendingRequests.map(req => (
+              <div key={req.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '15px', color: colors.text, marginBottom: '12px' }}>
+                  {req.requester.username} möchte mit dir befreundet sein
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button style={{ ...btnPrimary, marginBottom: 0, fontSize: '14px', padding: '10px' }} onClick={() => acceptRequest(req.id)}>Annehmen</button>
+                  <button style={{ ...btnSecondary, marginBottom: 0, fontSize: '14px', padding: '10px' }} onClick={() => rejectRequest(req.id)}>Ablehnen</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {friends.length > 0 && (
+          <div>
+            <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px', letterSpacing: '1px' }}>FREUNDE</h3>
+            {friends.map(f => {
+              const friend = f.requester.id === userId ? f.addressee : f.requester;
+              return (
+                <div key={f.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '15px', color: colors.text }}>{friend.username}</div>
+                    <div style={{ fontSize: '13px', color: colors.muted }}>{friend.email}</div>
+                  </div>
+                  <button style={{ ...btnSecondary, marginBottom: 0, fontSize: '13px', padding: '8px 16px', width: 'auto' }}>Duell</button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -678,17 +830,34 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 }
 
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
-  const [view, setView] = useState<'home' | 'selectCategory' | 'selectOpponent' | 'duel' | 'highscores' | 'admin'>('home');
+  const [view, setView] = useState<'home' | 'selectCategory' | 'selectOpponent' | 'duel' | 'highscores' | 'admin' | 'users'>('home');
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [activeDuel, setActiveDuel] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [totalQuestions, setTotalQuestions] = useState(0);
 
   useEffect(() => {
-    supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
+    const loadData = async () => {
+      const { data: cats } = await supabase.from('categories').select('*');
+      const categoriesWithCounts: any[] = [];
+      
+      for (const cat of cats || []) {
+        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('category_id', cat.id);
+        categoriesWithCounts.push({ ...cat, question_count: count || 0 });
+      }
+      
+      setCategories(categoriesWithCounts);
+      
+      const { count: total } = await supabase.from('questions').select('*', { count: 'exact', head: true });
+      setTotalQuestions(total || 0);
+    };
+
     supabase.from('profiles').select('is_admin').eq('id', user.id).single().then(({ data }) => {
       setIsAdmin(data?.is_admin || false);
     });
+
+    loadData();
   }, [user.id]);
 
   const icons: Record<string, string> = {
@@ -716,6 +885,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   );
   if (view === 'highscores') return <Highscores onBack={() => setView('home')} />;
   if (view === 'admin') return <AdminImport onBack={() => setView('home')} />;
+  if (view === 'users') return <UserSearch userId={user.id} onBack={() => setView('home')} />;
 
   if (view === 'selectOpponent') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
@@ -753,9 +923,12 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '20px' }}>Das Thema pro Runde wählst du später im Duell</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {categories.map(cat => (
-            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectOpponent'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ fontSize: '28px' }}>{icons[cat.name] || '📚'}</div>
-              <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
+            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectOpponent'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ fontSize: '28px' }}>{icons[cat.name] || '📚'}</div>
+                <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
+              </div>
+              <div style={{ color: colors.muted, fontSize: '14px' }}>{cat.question_count} Fragen</div>
             </div>
           ))}
         </div>
@@ -770,7 +943,8 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
           <h1 style={{ color: colors.primary, letterSpacing: '2px', margin: 0, fontSize: 'clamp(20px, 5vw, 28px)' }}>BOOKSMART</h1>
           <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px' }}>Abmelden</button>
         </div>
-        <p style={{ color: colors.muted, fontSize: '13px', letterSpacing: '1px', marginBottom: '32px' }}>WILLKOMMEN ZURÜCK</p>
+        <p style={{ color: colors.muted, fontSize: '13px', letterSpacing: '1px', marginBottom: '8px' }}>WILLKOMMEN ZURÜCK</p>
+        <p style={{ color: colors.text, fontSize: '15px', marginBottom: '32px' }}>{totalQuestions} Fragen hinterlegt</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <div onClick={() => setView('selectCategory')} style={{ backgroundColor: colors.primary, padding: '28px 20px', cursor: 'pointer', borderRadius: '4px' }}>
             <div style={{ fontSize: '28px', marginBottom: '10px' }}>⚔️</div>
@@ -782,11 +956,16 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
             <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>HIGHSCORES</div>
             <div style={{ color: colors.muted, fontSize: '12px' }}>Beste Spieler anzeigen</div>
           </div>
+          <div onClick={() => setView('users')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer' }}>
+            <div style={{ fontSize: '28px', marginBottom: '10px' }}>👥</div>
+            <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>SPIELER SUCHEN</div>
+            <div style={{ color: colors.muted, fontSize: '12px' }}>Freunde & Duelle</div>
+          </div>
           {isAdmin && (
-            <div onClick={() => setView('admin')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer', gridColumn: '1 / -1' }}>
+            <div onClick={() => setView('admin')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer' }}>
               <div style={{ fontSize: '28px', marginBottom: '10px' }}>⚙️</div>
-              <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>ADMIN: FRAGEN IMPORTIEREN</div>
-              <div style={{ color: colors.muted, fontSize: '12px' }}>CSV-Upload für Masseneingabe</div>
+              <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>ADMIN</div>
+              <div style={{ color: colors.muted, fontSize: '12px' }}>Fragen importieren</div>
             </div>
           )}
         </div>
