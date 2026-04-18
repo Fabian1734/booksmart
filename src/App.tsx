@@ -242,7 +242,7 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
 }
 
 function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) {
-  const [searchEmail, setSearchEmail] = useState('');
+  const [searchUsername, setSearchUsername] = useState('');
   const [searchResult, setSearchResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -258,7 +258,7 @@ function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) 
   const loadFriends = async () => {
     const { data } = await supabase
       .from('friendships')
-      .select('*, requester:profiles!friendships_requester_id_fkey(id, username, email), addressee:profiles!friendships_addressee_id_fkey(id, username, email)')
+      .select('*, requester:profiles!friendships_requester_id_fkey(id, username), addressee:profiles!friendships_addressee_id_fkey(id, username)')
       .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
       .eq('status', 'accepted');
     setFriends(data || []);
@@ -267,24 +267,24 @@ function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) 
   const loadPendingRequests = async () => {
     const { data } = await supabase
       .from('friendships')
-      .select('*, requester:profiles!friendships_requester_id_fkey(id, username, email)')
+      .select('*, requester:profiles!friendships_requester_id_fkey(id, username)')
       .eq('addressee_id', userId)
       .eq('status', 'pending');
     setPendingRequests(data || []);
   };
 
   const handleSearch = async () => {
-    if (!searchEmail.trim()) return;
+    if (!searchUsername.trim()) return;
     setLoading(true);
     setMessage('');
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, username, email')
-      .eq('email', searchEmail.trim())
+      .select('id, username')
+      .ilike('username', searchUsername.trim())
       .single();
     
     if (error || !data) {
-      setMessage('Kein User mit dieser E-Mail gefunden.');
+      setMessage('Kein User mit diesem Namen gefunden.');
       setSearchResult(null);
     } else if (data.id === userId) {
       setMessage('Das bist du selbst!');
@@ -297,17 +297,35 @@ function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) 
 
   const sendFriendRequest = async () => {
     if (!searchResult) return;
+    
+    // Prüfe ob bereits eine Freundschaft oder Anfrage existiert
+    const { data: existing } = await supabase
+      .from('friendships')
+      .select('*')
+      .or(`and(requester_id.eq.${userId},addressee_id.eq.${searchResult.id}),and(requester_id.eq.${searchResult.id},addressee_id.eq.${userId})`);
+    
+    if (existing && existing.length > 0) {
+      const status = existing[0].status;
+      if (status === 'accepted') {
+        setMessage('Ihr seid bereits befreundet!');
+      } else if (status === 'pending') {
+        setMessage('Anfrage wurde bereits gesendet.');
+      }
+      return;
+    }
+    
     const { error } = await supabase.from('friendships').insert({
       requester_id: userId,
       addressee_id: searchResult.id,
       status: 'pending',
     });
+    
     if (error) {
       setMessage('Freundschaftsanfrage konnte nicht gesendet werden.');
     } else {
       setMessage('✅ Freundschaftsanfrage gesendet!');
       setSearchResult(null);
-      setSearchEmail('');
+      setSearchUsername('');
     }
   };
 
@@ -331,10 +349,10 @@ function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) 
         <div style={{ marginBottom: '32px' }}>
           <input 
             style={inputStyle} 
-            placeholder="E-Mail-Adresse eingeben" 
-            value={searchEmail} 
-            onChange={e => setSearchEmail(e.target.value)}
-            type="email"
+            placeholder="Username eingeben" 
+            value={searchUsername} 
+            onChange={e => setSearchUsername(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSearch()}
           />
           <button style={btnPrimary} onClick={handleSearch} disabled={loading}>
             {loading ? 'Suche...' : 'Suchen'}
@@ -349,8 +367,7 @@ function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) 
 
         {searchResult && (
           <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '32px' }}>
-            <div style={{ fontSize: '18px', color: colors.text, marginBottom: '8px' }}>{searchResult.username}</div>
-            <div style={{ fontSize: '14px', color: colors.muted, marginBottom: '20px' }}>{searchResult.email}</div>
+            <div style={{ fontSize: '18px', color: colors.text, marginBottom: '20px' }}>{searchResult.username}</div>
             <button style={btnPrimary} onClick={sendFriendRequest}>Freundschaftsanfrage senden</button>
             <button style={btnSecondary}>Zum Duell herausfordern</button>
           </div>
@@ -382,7 +399,6 @@ function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) 
                 <div key={f.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontSize: '15px', color: colors.text }}>{friend.username}</div>
-                    <div style={{ fontSize: '13px', color: colors.muted }}>{friend.email}</div>
                   </div>
                   <button style={{ ...btnSecondary, marginBottom: 0, fontSize: '13px', padding: '8px 16px', width: 'auto' }}>Duell</button>
                 </div>
@@ -610,9 +626,16 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
   const userChoosesThisRound = currentRound === 1 || currentRound === 3;
 
   useEffect(() => {
-    supabase.from('subcategories').select('*').eq('category_id', duel.category_id).then(({ data }) => {
-      setAvailableSubs(data || []);
-    });
+    const loadSubsWithCounts = async () => {
+      const { data: subs } = await supabase.from('subcategories').select('*').eq('category_id', duel.category_id);
+      const subsWithCounts: any[] = [];
+      for (const sub of subs || []) {
+        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('subcategory_id', sub.id);
+        subsWithCounts.push({ ...sub, question_count: count || 0 });
+      }
+      setAvailableSubs(subsWithCounts);
+    };
+    loadSubsWithCounts();
   }, [duel.category_id]);
 
   useEffect(() => {
@@ -789,8 +812,9 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
           <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Für diese Runde</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {availableSubs.map(sub => (
-              <div key={sub.id} onClick={() => loadQuestionsForSub(sub)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px 20px', cursor: 'pointer', borderRadius: '4px', color: colors.text, fontSize: '15px' }}>
-                {sub.name}
+              <div key={sub.id} onClick={() => loadQuestionsForSub(sub)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px 20px', cursor: 'pointer', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ color: colors.text, fontSize: '15px' }}>{sub.name}</div>
+                <div style={{ color: colors.muted, fontSize: '14px' }}>{sub.question_count} Fragen</div>
               </div>
             ))}
           </div>
@@ -1000,7 +1024,7 @@ function App() {
     setLoading(true); setError('');
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) { setError(error.message); setLoading(false); return; }
-    if (data.user) await supabase.from('profiles').insert({ id: data.user.id, username });
+    if (data.user) await supabase.from('profiles').insert({ id: data.user.id, username, email });
     setLoading(false); setMode('login');
     setError('Registrierung erfolgreich! Bitte anmelden.');
   };
