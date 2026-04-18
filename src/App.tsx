@@ -197,7 +197,7 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
                 {questions.slice(0, 5).map((q, i) => (
                   <div key={i} style={{ padding: '12px 0', borderBottom: i < 4 ? `1px solid ${colors.light}` : 'none' }}>
                     <div style={{ fontSize: '14px', color: colors.text, marginBottom: '4px' }}>{q.question_text}</div>
-                    <div style={{ fontSize: '12px', color: colors.muted' }}>
+                    <div style={{ fontSize: '12px', color: colors.muted }}>
                       {q.category_name} → {q.subcategory_name} → {q.book_title}
                     </div>
                   </div>
