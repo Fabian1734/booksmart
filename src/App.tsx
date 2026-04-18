@@ -323,6 +323,17 @@ function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) 
     if (error) {
       setMessage('Freundschaftsanfrage konnte nicht gesendet werden.');
     } else {
+      // Hole eigenen Username für die Notification
+      const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
+      
+      // Erstelle Notification für den Empfänger
+      await supabase.from('notifications').insert({
+        user_id: searchResult.id,
+        type: 'friend_request',
+        title: 'Neue Freundschaftsanfrage',
+        message: `${myProfile?.username || 'Jemand'} möchte mit dir befreundet sein`,
+      });
+      
       setMessage('✅ Freundschaftsanfrage gesendet!');
       setSearchResult(null);
       setSearchUsername('');
@@ -411,6 +422,110 @@ function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) 
   );
 }
 
+function Notifications({ userId, onBack }: { userId: string, onBack: () => void }) {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadNotifications();
+    // Markiere alle als gelesen beim Öffnen
+    markAllAsRead();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  const loadNotifications = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    setNotifications(data || []);
+    setLoading(false);
+  };
+
+  const markAllAsRead = async () => {
+    await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', userId)
+      .eq('is_read', false);
+  };
+
+  const deleteNotification = async (id: string) => {
+    await supabase.from('notifications').delete().eq('id', id);
+    loadNotifications();
+  };
+
+  const iconForType = (type: string) => {
+    switch (type) {
+      case 'friend_request': return '👥';
+      case 'duel_challenge': return '⚔️';
+      case 'duel_turn': return '🎯';
+      case 'duel_completed': return '🏁';
+      default: return '🔔';
+    }
+  };
+
+  const timeAgo = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffH = Math.floor(diffMin / 60);
+    const diffD = Math.floor(diffH / 24);
+    if (diffMin < 1) return 'Gerade eben';
+    if (diffMin < 60) return `vor ${diffMin} Min`;
+    if (diffH < 24) return `vor ${diffH} Std`;
+    if (diffD < 7) return `vor ${diffD} Tagen`;
+    return date.toLocaleDateString('de-CH');
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>BENACHRICHTIGUNGEN</h2>
+
+        {loading ? (
+          <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p>
+        ) : notifications.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px 16px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔕</div>
+            <p style={{ color: colors.muted, fontSize: '15px' }}>Keine Benachrichtigungen</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {notifications.map(notif => (
+              <div key={notif.id} style={{ 
+                backgroundColor: '#FDFAF5', 
+                border: '1px solid #C9B99A', 
+                borderRadius: '4px', 
+                padding: '16px',
+                display: 'flex',
+                gap: '14px',
+                alignItems: 'flex-start',
+              }}>
+                <div style={{ fontSize: '24px', flexShrink: 0 }}>{iconForType(notif.type)}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '15px', color: colors.text, marginBottom: '4px', fontWeight: 'bold' }}>{notif.title}</div>
+                  <div style={{ fontSize: '14px', color: colors.text, marginBottom: '6px' }}>{notif.message}</div>
+                  <div style={{ fontSize: '12px', color: colors.muted }}>{timeAgo(notif.created_at)}</div>
+                </div>
+                <button 
+                  onClick={() => deleteNotification(notif.id)}
+                  style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontSize: '18px', padding: '0 4px', flexShrink: 0 }}
+                  title="Löschen"
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 function Highscores({ onBack }: { onBack: () => void }) {
   const [scores, setScores] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -855,12 +970,13 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 }
 
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
-  const [view, setView] = useState<'home' | 'selectCategory' | 'selectOpponent' | 'duel' | 'highscores' | 'admin' | 'users'>('home');
+  const [view, setView] = useState<'home' | 'selectCategory' | 'selectOpponent' | 'duel' | 'highscores' | 'admin' | 'users' | 'notifications'>('home');
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [activeDuel, setActiveDuel] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [totalQuestions, setTotalQuestions] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -883,7 +999,22 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     });
 
     loadData();
+    loadUnreadCount();
+
+    // Polle alle 30 Sekunden für neue Notifications
+    const interval = setInterval(loadUnreadCount, 30000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
+
+  const loadUnreadCount = async () => {
+    const { count } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('is_read', false);
+    setUnreadCount(count || 0);
+  };
 
   const icons: Record<string, string> = {
     'Geschichte der Schweiz': '🇨🇭',
@@ -911,7 +1042,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   if (view === 'highscores') return <Highscores onBack={() => setView('home')} />;
   if (view === 'admin') return <AdminImport onBack={() => setView('home')} />;
   if (view === 'users') return <UserSearch userId={user.id} onBack={() => setView('home')} />;
-
+  if (view === 'notifications') return <Notifications userId={user.id} onBack={() => { setView('home'); loadUnreadCount(); }} />;
   if (view === 'selectOpponent') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
@@ -964,9 +1095,37 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', paddingTop: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', paddingTop: '12px' }}>
           <h1 style={{ color: colors.primary, letterSpacing: '2px', margin: 0, fontSize: 'clamp(20px, 5vw, 28px)' }}>BOOKSMART</h1>
-          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px' }}>Abmelden</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button 
+              onClick={() => setView('notifications')} 
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', position: 'relative', padding: '4px 8px' }}
+            >
+              🔔
+              {unreadCount > 0 && (
+                <span style={{ 
+                  position: 'absolute', 
+                  top: '0', 
+                  right: '0', 
+                  backgroundColor: '#E53935', 
+                  color: 'white', 
+                  fontSize: '11px', 
+                  fontWeight: 'bold', 
+                  borderRadius: '50%', 
+                  minWidth: '18px', 
+                  height: '18px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                }}>
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+            <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px' }}>Abmelden</button>
+          </div>
         </div>
         <p style={{ color: colors.muted, fontSize: '13px', letterSpacing: '1px', marginBottom: '8px' }}>WILLKOMMEN ZURÜCK</p>
         <p style={{ color: colors.text, fontSize: '15px', marginBottom: '32px' }}>{totalQuestions} Fragen hinterlegt</p>
