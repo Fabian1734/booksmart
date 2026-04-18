@@ -271,7 +271,6 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 
   const opponentName = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.name || 'Bot' : 'Gegner';
   const opponentEmoji = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.emoji || '🤖' : '👤';
-  const botAccuracy = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.accuracy || 0.5 : 0;  const bot = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level) : { name: 'Gegner', emoji: '👤', accuracy: 0.5 };
   const totalRounds = 4;
   const userChoosesThisRound = currentRound === 1 || currentRound === 3;
 
