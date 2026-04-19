@@ -54,11 +54,41 @@ const bots = [
 ];
 
 const QUESTIONS_PER_ROUND = 3;
+const TOTAL_ROUNDS = 4;
 
 function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: number): string {
   if (Math.random() < accuracy) return correctAnswer;
   const wrong = optionKeys.filter(o => o !== correctAnswer);
   return wrong[Math.floor(Math.random() * wrong.length)];
+}
+
+// Hilfsfunktion: Tiefste ungespielte Gruppe für einen oder zwei User
+async function findBestGroup(subcategoryId: string, userIds: string[]): Promise<{ id: string; group_number: number } | null> {
+  const { data: allGroups } = await supabase
+    .from('question_groups')
+    .select('id, group_number')
+    .eq('subcategory_id', subcategoryId)
+    .order('group_number', { ascending: true });
+
+  if (!allGroups || allGroups.length === 0) return null;
+
+  const { data: playedData } = await supabase
+    .from('played_groups')
+    .select('group_id, user_id')
+    .in('user_id', userIds);
+
+  // Zähle wie oft jede Gruppe von den angegebenen Usern gespielt wurde
+  const playCount: Record<string, number> = {};
+  playedData?.forEach(p => {
+    playCount[p.group_id] = (playCount[p.group_id] || 0) + 1;
+  });
+
+  // Finde tiefste Gruppe, die keiner der User gespielt hat
+  const neverPlayed = allGroups.find(g => !playCount[g.id]);
+  if (neverPlayed) return neverPlayed;
+
+  // Alle gespielt -> nimm tiefste
+  return allGroups[0];
 }
 
 interface CSVQuestion {
@@ -193,7 +223,6 @@ function AdminImport({ onBack }: { onBack: () => void }) {
     setGrouping(true);
     setGroupResult('');
     try {
-      // Hole alle Subkategorien
       const { data: subs } = await supabase.from('subcategories').select('*');
       if (!subs) throw new Error('Keine Subkategorien gefunden');
 
@@ -201,7 +230,6 @@ function AdminImport({ onBack }: { onBack: () => void }) {
       let subResults: string[] = [];
 
       for (const sub of subs) {
-        // Hole alle Fragen dieser Subkategorie
         const { data: questionsInSub } = await supabase
           .from('questions')
           .select('id')
@@ -209,7 +237,6 @@ function AdminImport({ onBack }: { onBack: () => void }) {
 
         if (!questionsInSub || questionsInSub.length === 0) continue;
 
-        // Hole bereits gruppierte Frage-IDs für diese Subkategorie
         const { data: existingGroups } = await supabase
           .from('question_groups')
           .select('id')
@@ -225,14 +252,9 @@ function AdminImport({ onBack }: { onBack: () => void }) {
           groupedIds = new Set(existingMembers?.map(m => m.question_id) || []);
         }
 
-        // Ungruppierte Fragen
         const ungrouped = questionsInSub.filter(q => !groupedIds.has(q.id));
+        if (ungrouped.length < 3) continue;
 
-        console.log(`${sub.name}: ${questionsInSub.length} Fragen insgesamt, ${ungrouped.length} ungruppiert`);
-
-        if (ungrouped.length < 3) continue; // Nicht genug für eine neue Gruppe
-
-        // Höchste bestehende Gruppennummer
         const { data: maxGroups } = await supabase
           .from('question_groups')
           .select('group_number')
@@ -243,14 +265,10 @@ function AdminImport({ onBack }: { onBack: () => void }) {
         let nextGroupNumber = (maxGroups && maxGroups.length > 0 ? maxGroups[0].group_number : 0) + 1;
         let createdForThisSub = 0;
 
-        // Erstelle 3er-Gruppen aus ungruppierten Fragen
         for (let i = 0; i + 2 < ungrouped.length; i += 3) {
           const { data: newGroup, error: groupError } = await supabase
             .from('question_groups')
-            .insert({
-              subcategory_id: sub.id,
-              group_number: nextGroupNumber,
-            })
+            .insert({ subcategory_id: sub.id, group_number: nextGroupNumber })
             .select()
             .single();
 
@@ -262,10 +280,7 @@ function AdminImport({ onBack }: { onBack: () => void }) {
             { group_id: newGroup.id, question_id: ungrouped[i + 2].id, position: 3 },
           ];
 
-          const { error: memberError } = await supabase
-            .from('question_group_members')
-            .insert(members);
-
+          const { error: memberError } = await supabase.from('question_group_members').insert(members);
           if (memberError) throw memberError;
 
           nextGroupNumber++;
@@ -288,7 +303,7 @@ function AdminImport({ onBack }: { onBack: () => void }) {
     } finally {
       setGrouping(false);
     }
-  }; 
+  };
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
@@ -319,22 +334,19 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
                 {questions.slice(0, 5).map((q, i) => (
                   <div key={i} style={{ padding: '12px 0', borderBottom: i < 4 ? `1px solid ${colors.light}` : 'none' }}>
                     <div style={{ fontSize: '14px', color: colors.text, marginBottom: '4px' }}>{q.question_text}</div>
-                    <div style={{ fontSize: '12px', color: colors.muted }}>
-                      {q.category_name} → {q.subcategory_name} → {q.book_title}
-                    </div>
+                    <div style={{ fontSize: '12px', color: colors.muted }}>{q.category_name} → {q.subcategory_name} → {q.book_title}</div>
                   </div>
                 ))}
                 {questions.length > 5 && <div style={{ fontSize: '12px', color: colors.muted, paddingTop: '12px' }}>... und {questions.length - 5} weitere</div>}
               </div>
             </div>
-
             <button style={btnPrimary} onClick={handleImport} disabled={importing}>
               {importing ? 'Importiere...' : `${questions.length} Fragen importieren`}
             </button>
           </>
         )}
 
-{result && (
+        {result && (
           <div style={{ backgroundColor: result.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${result.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
             {result}
           </div>
@@ -357,187 +369,6 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
       </div>
     </div>
   );
-}        
-
-function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) {
-  const [searchUsername, setSearchUsername] = useState('');
-  const [searchResult, setSearchResult] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [friends, setFriends] = useState<any[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-
-  useEffect(() => {
-    loadFriends();
-    loadPendingRequests();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
-
-  const loadFriends = async () => {
-    const { data } = await supabase
-      .from('friendships')
-      .select('*, requester:profiles!friendships_requester_id_fkey(id, username), addressee:profiles!friendships_addressee_id_fkey(id, username)')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-      .eq('status', 'accepted');
-    setFriends(data || []);
-  };
-
-  const loadPendingRequests = async () => {
-    const { data } = await supabase
-      .from('friendships')
-      .select('*, requester:profiles!friendships_requester_id_fkey(id, username)')
-      .eq('addressee_id', userId)
-      .eq('status', 'pending');
-    setPendingRequests(data || []);
-  };
-
-  const handleSearch = async () => {
-    if (!searchUsername.trim()) return;
-    setLoading(true);
-    setMessage('');
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, username')
-      .ilike('username', searchUsername.trim())
-      .single();
-    
-    if (error || !data) {
-      setMessage('Kein User mit diesem Namen gefunden.');
-      setSearchResult(null);
-    } else if (data.id === userId) {
-      setMessage('Das bist du selbst!');
-      setSearchResult(null);
-    } else {
-      setSearchResult(data);
-    }
-    setLoading(false);
-  };
-
-  const sendFriendRequest = async () => {
-    if (!searchResult) return;
-    
-    // Prüfe ob bereits eine Freundschaft oder Anfrage existiert
-    const { data: existing } = await supabase
-      .from('friendships')
-      .select('*')
-      .or(`and(requester_id.eq.${userId},addressee_id.eq.${searchResult.id}),and(requester_id.eq.${searchResult.id},addressee_id.eq.${userId})`);
-    
-    if (existing && existing.length > 0) {
-      const status = existing[0].status;
-      if (status === 'accepted') {
-        setMessage('Ihr seid bereits befreundet!');
-      } else if (status === 'pending') {
-        setMessage('Anfrage wurde bereits gesendet.');
-      }
-      return;
-    }
-    
-    const { error } = await supabase.from('friendships').insert({
-      requester_id: userId,
-      addressee_id: searchResult.id,
-      status: 'pending',
-    });
-    
-    if (error) {
-      setMessage('Freundschaftsanfrage konnte nicht gesendet werden.');
-    } else {
-      // Hole eigenen Username für die Notification
-      const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
-      
-      // Erstelle Notification für den Empfänger
-      await supabase.from('notifications').insert({
-        user_id: searchResult.id,
-        type: 'friend_request',
-        title: 'Neue Freundschaftsanfrage',
-        message: `${myProfile?.username || 'Jemand'} möchte mit dir befreundet sein`,
-      });
-      
-      setMessage('✅ Freundschaftsanfrage gesendet!');
-      setSearchResult(null);
-      setSearchUsername('');
-    }
-  };
-
-  const acceptRequest = async (friendshipId: string) => {
-    await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
-    loadFriends();
-    loadPendingRequests();
-  };
-
-  const rejectRequest = async (friendshipId: string) => {
-    await supabase.from('friendships').delete().eq('id', friendshipId);
-    loadPendingRequests();
-  };
-
-  return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
-      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>SPIELER SUCHEN</h2>
-
-        <div style={{ marginBottom: '32px' }}>
-          <input 
-            style={inputStyle} 
-            placeholder="Username eingeben" 
-            value={searchUsername} 
-            onChange={e => setSearchUsername(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSearch()}
-          />
-          <button style={btnPrimary} onClick={handleSearch} disabled={loading}>
-            {loading ? 'Suche...' : 'Suchen'}
-          </button>
-        </div>
-
-        {message && (
-          <div style={{ backgroundColor: message.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginBottom: '24px', fontSize: '14px' }}>
-            {message}
-          </div>
-        )}
-
-        {searchResult && (
-          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '32px' }}>
-            <div style={{ fontSize: '18px', color: colors.text, marginBottom: '20px' }}>{searchResult.username}</div>
-            <button style={btnPrimary} onClick={sendFriendRequest}>Freundschaftsanfrage senden</button>
-            <button style={btnSecondary}>Zum Duell herausfordern</button>
-          </div>
-        )}
-
-        {pendingRequests.length > 0 && (
-          <div style={{ marginBottom: '32px' }}>
-            <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px', letterSpacing: '1px' }}>ANFRAGEN</h3>
-            {pendingRequests.map(req => (
-              <div key={req.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '12px' }}>
-                <div style={{ fontSize: '15px', color: colors.text, marginBottom: '12px' }}>
-                  {req.requester.username} möchte mit dir befreundet sein
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button style={{ ...btnPrimary, marginBottom: 0, fontSize: '14px', padding: '10px' }} onClick={() => acceptRequest(req.id)}>Annehmen</button>
-                  <button style={{ ...btnSecondary, marginBottom: 0, fontSize: '14px', padding: '10px' }} onClick={() => rejectRequest(req.id)}>Ablehnen</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {friends.length > 0 && (
-          <div>
-            <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px', letterSpacing: '1px' }}>FREUNDE</h3>
-            {friends.map(f => {
-              const friend = f.requester.id === userId ? f.addressee : f.requester;
-              return (
-                <div key={f.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '15px', color: colors.text }}>{friend.username}</div>
-                  </div>
-                  <button style={{ ...btnSecondary, marginBottom: 0, fontSize: '13px', padding: '8px 16px', width: 'auto' }}>Duell</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 function Notifications({ userId, onBack }: { userId: string, onBack: () => void }) {
@@ -546,7 +377,6 @@ function Notifications({ userId, onBack }: { userId: string, onBack: () => void 
 
   useEffect(() => {
     loadNotifications();
-    // Markiere alle als gelesen beim Öffnen
     markAllAsRead();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
@@ -564,11 +394,7 @@ function Notifications({ userId, onBack }: { userId: string, onBack: () => void 
   };
 
   const markAllAsRead = async () => {
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', userId)
-      .eq('is_read', false);
+    await supabase.from('notifications').update({ is_read: true }).eq('user_id', userId).eq('is_read', false);
   };
 
   const deleteNotification = async (id: string) => {
@@ -605,7 +431,6 @@ function Notifications({ userId, onBack }: { userId: string, onBack: () => void 
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
         <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>BENACHRICHTIGUNGEN</h2>
-
         {loading ? (
           <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p>
         ) : notifications.length === 0 ? (
@@ -616,26 +441,14 @@ function Notifications({ userId, onBack }: { userId: string, onBack: () => void 
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {notifications.map(notif => (
-              <div key={notif.id} style={{ 
-                backgroundColor: '#FDFAF5', 
-                border: '1px solid #C9B99A', 
-                borderRadius: '4px', 
-                padding: '16px',
-                display: 'flex',
-                gap: '14px',
-                alignItems: 'flex-start',
-              }}>
+              <div key={notif.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
                 <div style={{ fontSize: '24px', flexShrink: 0 }}>{iconForType(notif.type)}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '15px', color: colors.text, marginBottom: '4px', fontWeight: 'bold' }}>{notif.title}</div>
                   <div style={{ fontSize: '14px', color: colors.text, marginBottom: '6px' }}>{notif.message}</div>
                   <div style={{ fontSize: '12px', color: colors.muted }}>{timeAgo(notif.created_at)}</div>
                 </div>
-                <button 
-                  onClick={() => deleteNotification(notif.id)}
-                  style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontSize: '18px', padding: '0 4px', flexShrink: 0 }}
-                  title="Löschen"
-                >×</button>
+                <button onClick={() => deleteNotification(notif.id)} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontSize: '18px', padding: '0 4px', flexShrink: 0 }} title="Löschen">×</button>
               </div>
             ))}
           </div>
@@ -644,6 +457,153 @@ function Notifications({ userId, onBack }: { userId: string, onBack: () => void 
     </div>
   );
 }
+
+function UserSearch({ userId, onBack, onChallenge }: { userId: string, onBack: () => void, onChallenge: (opponent: any) => void }) {
+  const [searchUsername, setSearchUsername] = useState('');
+  const [searchResult, setSearchResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [friends, setFriends] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadFriends();
+    loadPendingRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  const loadFriends = async () => {
+    const { data } = await supabase
+      .from('friendships')
+      .select('*, requester:profiles!friendships_requester_id_fkey(id, username), addressee:profiles!friendships_addressee_id_fkey(id, username)')
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+      .eq('status', 'accepted');
+    setFriends(data || []);
+  };
+
+  const loadPendingRequests = async () => {
+    const { data } = await supabase
+      .from('friendships')
+      .select('*, requester:profiles!friendships_requester_id_fkey(id, username)')
+      .eq('addressee_id', userId)
+      .eq('status', 'pending');
+    setPendingRequests(data || []);
+  };
+
+  const handleSearch = async () => {
+    if (!searchUsername.trim()) return;
+    setLoading(true);
+    setMessage('');
+    const { data, error } = await supabase.from('profiles').select('id, username').ilike('username', searchUsername.trim()).single();
+    if (error || !data) {
+      setMessage('Kein User mit diesem Namen gefunden.');
+      setSearchResult(null);
+    } else if (data.id === userId) {
+      setMessage('Das bist du selbst!');
+      setSearchResult(null);
+    } else {
+      setSearchResult(data);
+    }
+    setLoading(false);
+  };
+
+  const sendFriendRequest = async () => {
+    if (!searchResult) return;
+    const { data: existing } = await supabase
+      .from('friendships')
+      .select('*')
+      .or(`and(requester_id.eq.${userId},addressee_id.eq.${searchResult.id}),and(requester_id.eq.${searchResult.id},addressee_id.eq.${userId})`);
+    if (existing && existing.length > 0) {
+      const status = existing[0].status;
+      if (status === 'accepted') setMessage('Ihr seid bereits befreundet!');
+      else if (status === 'pending') setMessage('Anfrage wurde bereits gesendet.');
+      return;
+    }
+    const { error } = await supabase.from('friendships').insert({ requester_id: userId, addressee_id: searchResult.id, status: 'pending' });
+    if (error) {
+      setMessage('Freundschaftsanfrage konnte nicht gesendet werden.');
+    } else {
+      const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
+      await supabase.from('notifications').insert({
+        user_id: searchResult.id,
+        type: 'friend_request',
+        title: 'Neue Freundschaftsanfrage',
+        message: `${myProfile?.username || 'Jemand'} möchte mit dir befreundet sein`,
+      });
+      setMessage('✅ Freundschaftsanfrage gesendet!');
+      setSearchResult(null);
+      setSearchUsername('');
+    }
+  };
+
+  const acceptRequest = async (friendshipId: string) => {
+    await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
+    loadFriends();
+    loadPendingRequests();
+  };
+
+  const rejectRequest = async (friendshipId: string) => {
+    await supabase.from('friendships').delete().eq('id', friendshipId);
+    loadPendingRequests();
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>SPIELER SUCHEN</h2>
+
+        <div style={{ marginBottom: '32px' }}>
+          <input style={inputStyle} placeholder="Username eingeben" value={searchUsername} onChange={e => setSearchUsername(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
+          <button style={btnPrimary} onClick={handleSearch} disabled={loading}>{loading ? 'Suche...' : 'Suchen'}</button>
+        </div>
+
+        {message && (
+          <div style={{ backgroundColor: message.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginBottom: '24px', fontSize: '14px' }}>{message}</div>
+        )}
+
+        {searchResult && (
+          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '32px' }}>
+            <div style={{ fontSize: '18px', color: colors.text, marginBottom: '20px' }}>{searchResult.username}</div>
+            <button style={btnPrimary} onClick={sendFriendRequest}>Freundschaftsanfrage senden</button>
+            <button style={btnSecondary} onClick={() => onChallenge(searchResult)}>Zum Duell herausfordern</button>
+          </div>
+        )}
+
+        {pendingRequests.length > 0 && (
+          <div style={{ marginBottom: '32px' }}>
+            <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px', letterSpacing: '1px' }}>ANFRAGEN</h3>
+            {pendingRequests.map(req => (
+              <div key={req.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '15px', color: colors.text, marginBottom: '12px' }}>{req.requester.username} möchte mit dir befreundet sein</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button style={{ ...btnPrimary, marginBottom: 0, fontSize: '14px', padding: '10px' }} onClick={() => acceptRequest(req.id)}>Annehmen</button>
+                  <button style={{ ...btnSecondary, marginBottom: 0, fontSize: '14px', padding: '10px' }} onClick={() => rejectRequest(req.id)}>Ablehnen</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {friends.length > 0 && (
+          <div>
+            <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px', letterSpacing: '1px' }}>FREUNDE</h3>
+            {friends.map(f => {
+              const friend = f.requester.id === userId ? f.addressee : f.requester;
+              return (
+                <div key={f.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '15px', color: colors.text }}>{friend.username}</div>
+                  <button style={{ ...btnSecondary, marginBottom: 0, fontSize: '13px', padding: '8px 16px', width: 'auto' }} onClick={() => onChallenge(friend)}>Duell</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Highscores({ onBack }: { onBack: () => void }) {
   const [scores, setScores] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -657,11 +617,7 @@ function Highscores({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     const fetchScores = async () => {
       setLoading(true);
-      let query = supabase
-        .from('scores')
-        .select('*, profiles(username), categories(name)')
-        .order('points', { ascending: false })
-        .limit(20);
+      let query = supabase.from('scores').select('*, profiles(username), categories(name)').order('points', { ascending: false }).limit(20);
       if (selectedCategory !== 'all') query = query.eq('category_id', selectedCategory);
       const { data } = await query;
       setScores(data || []);
@@ -707,9 +663,10 @@ function Highscores({ onBack }: { onBack: () => void }) {
   );
 }
 
+// QUIZ ROUND - für einzelne Runde (sowohl Bot als auch User Duell)
 function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }: {
-  questions: any[], roundNumber: number, totalRounds: number, bot: any,
-  onRoundComplete: (userAnswers: boolean[], botAnswers: boolean[]) => void
+  questions: any[], roundNumber: number, totalRounds: number, bot: any | null,
+  onRoundComplete: (userAnswers: boolean[], botAnswers: boolean[] | null, selectedAnswers: string[]) => void
 }) {
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -717,6 +674,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   const [showResult, setShowResult] = useState(false);
   const [userAnswers, setUserAnswers] = useState<boolean[]>([]);
   const [botAnswers, setBotAnswers] = useState<boolean[]>([]);
+  const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
 
   const handleAnswer = (answer: string) => {
     if (selected) return;
@@ -725,18 +683,28 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
     setTimeout(() => {
       const q = questions[current];
       const optionKeys = q.type === 'true_false' ? ['Wahr', 'Falsch'] : ['A', 'B', 'C', 'D'];
-      const bAnswer = getBotAnswer(optionKeys, q.correct_answer, bot.accuracy);
       const userIsCorrect = answer === q.correct_answer;
-      const botIsCorrect = bAnswer === q.correct_answer;
-
-      setBotAnswer(bAnswer);
+      
+      let bAnswer: string | null = null;
+      let botIsCorrect = false;
+      if (bot) {
+        bAnswer = getBotAnswer(optionKeys, q.correct_answer, bot.accuracy);
+        botIsCorrect = bAnswer === q.correct_answer;
+        setBotAnswer(bAnswer);
+      }
+      
       setShowResult(true);
       setUserAnswers(prev => [...prev, userIsCorrect]);
-      setBotAnswers(prev => [...prev, botIsCorrect]);
+      if (bot) setBotAnswers(prev => [...prev, botIsCorrect]);
+      setSelectedAnswers(prev => [...prev, answer]);
 
       setTimeout(() => {
         if (current + 1 >= questions.length) {
-          onRoundComplete([...userAnswers, userIsCorrect], [...botAnswers, botIsCorrect]);
+          onRoundComplete(
+            [...userAnswers, userIsCorrect],
+            bot ? [...botAnswers, botIsCorrect] : null,
+            [...selectedAnswers, answer]
+          );
         } else {
           setCurrent(c => c + 1);
           setSelected(null);
@@ -769,17 +737,11 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
             const isUserSelected = opt.key === selected;
             const isBotSelected = opt.key === botAnswer;
             let bg = '#FDFAF5', border = '1px solid #C9B99A', color = colors.text;
-
-            if (isUserSelected && !showResult) {
-              bg = '#E8DFD0';
-              border = '2px solid ' + colors.primary;
-            }
-
+            if (isUserSelected && !showResult) { bg = '#E8DFD0'; border = '2px solid ' + colors.primary; }
             if (showResult) {
               if (isCorrect) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; color = '#2E7D32'; }
               else if (isUserSelected) { bg = '#FDECEA'; border = '1px solid #E53935'; color = '#B71C1C'; }
             }
-
             return (
               <button key={opt.key} onClick={() => handleAnswer(opt.key)} style={{
                 padding: '14px 16px', backgroundColor: bg, border, color,
@@ -791,7 +753,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
                 <span style={{ flex: 1, paddingRight: '8px' }}>
                   <span style={{ fontWeight: 'bold', marginRight: '10px' }}>{opt.key}.</span>{opt.label}
                 </span>
-                {showResult && (isUserSelected || isBotSelected) && (
+                {showResult && bot && (isUserSelected || isBotSelected) && (
                   <span style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                     {isUserSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>👤</span>}
                     {isBotSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>{bot.emoji}</span>}
@@ -806,41 +768,35 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   );
 }
 
-function IntermediateScore({ myScore, botScore, myTotal, botTotal, roundsPlayed, onContinue }: {
-  myScore: number, botScore: number, myTotal: number, botTotal: number, roundsPlayed: number, onContinue: () => void
-}) {
-  const questionsPerRound = QUESTIONS_PER_ROUND;
+function IntermediateScore({ myTotal, botTotal, roundsPlayed, onContinue }: { myTotal: number, botTotal: number, roundsPlayed: number, onContinue: () => void }) {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
         <div style={{ fontSize: '42px', marginBottom: '16px' }}>📊</div>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>
-          NACH {roundsPlayed} RUNDEN
-        </h2>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>NACH {roundsPlayed} RUNDEN</h2>
         <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>ZWISCHENSTAND</p>
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '32px' }}>
           <div style={{ backgroundColor: '#FDFAF5', border: '2px solid #C9B99A', padding: '20px 12px', borderRadius: '4px' }}>
             <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
             <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
             <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotal}</div>
-            <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * questionsPerRound} richtig</div>
+            <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * QUESTIONS_PER_ROUND} richtig</div>
           </div>
           <div style={{ backgroundColor: '#FDFAF5', border: '2px solid #C9B99A', padding: '20px 12px', borderRadius: '4px' }}>
-            <div style={{ fontSize: '20px', marginBottom: '6px' }}>{bots.find(b => b.level === 1)?.emoji || '🤖'}</div>
+            <div style={{ fontSize: '20px', marginBottom: '6px' }}>🤖</div>
             <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>GEGNER</div>
             <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
-            <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * questionsPerRound} richtig</div>
+            <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * QUESTIONS_PER_ROUND} richtig</div>
           </div>
         </div>
-
         <button style={btnPrimary} onClick={onContinue}>Weiter</button>
       </div>
     </div>
   );
 }
 
-function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
+// BOT-DUELL
+function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentRound, setCurrentRound] = useState(1);
@@ -852,10 +808,9 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
   const [availableSubs, setAvailableSubs] = useState<any[]>([]);
   const [announcementSub, setAnnouncementSub] = useState<any>(null);
 
-  const opponentName = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.name || 'Bot' : 'Gegner';
-  const opponentEmoji = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.emoji || '🤖' : '👤';
-  const bot = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level) : { name: 'Gegner', emoji: '👤', accuracy: 0.5 };
-  const totalRounds = 4;
+  const opponentName = bots.find(b => b.level === duel.bot_level)?.name || 'Bot';
+  const opponentEmoji = bots.find(b => b.level === duel.bot_level)?.emoji || '🤖';
+  const bot = bots.find(b => b.level === duel.bot_level) || { name: 'Gegner', emoji: '👤', accuracy: 0.5 };
   const userChoosesThisRound = currentRound === 1 || currentRound === 3;
 
   useEffect(() => {
@@ -877,9 +832,7 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
         const randomSub = availableSubs[Math.floor(Math.random() * availableSubs.length)];
         setAnnouncementSub(randomSub);
         setPhase('announcement');
-        setTimeout(() => {
-          loadQuestionsForSub(randomSub);
-        }, 4000);
+        setTimeout(() => { loadQuestionsForSub(randomSub); }, 4000);
       }
     };
     autoPickForBot();
@@ -890,34 +843,14 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
     setLoading(true);
     setRoundSubcategories(prev => [...prev, sub]);
 
-    // Hole alle Gruppen dieser Subkategorie (sortiert nach group_number)
-    const { data: allGroups } = await supabase
-      .from('question_groups')
-      .select('id, group_number')
-      .eq('subcategory_id', sub.id)
-      .order('group_number', { ascending: true });
-
-    if (!allGroups || allGroups.length === 0) {
+    const selectedGroup = await findBestGroup(sub.id, [userId]);
+    if (!selectedGroup) {
       setQuestions([]);
       setLoading(false);
       setPhase('playing');
       return;
     }
 
-    // Hole die vom User bereits gespielten Gruppen
-    const { data: playedData } = await supabase
-      .from('played_groups')
-      .select('group_id')
-      .eq('user_id', userId);
-
-    const playedIds = new Set(playedData?.map(p => p.group_id) || []);
-
-  // Finde tiefste ungespielte Gruppe, fallback auf erste Gruppe
-  const selectedGroup: { id: string; group_number: number } = allGroups.find(g => !playedIds.has(g.id)) || allGroups[0];
-
-   
-
-    // Lade die 3 Fragen dieser Gruppe in der richtigen Reihenfolge
     const { data: members } = await supabase
       .from('question_group_members')
       .select('position, questions(*)')
@@ -926,15 +859,12 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 
     const groupQuestions = members?.map((m: any) => m.questions).filter(Boolean) || [];
 
-    // Markiere Gruppe als gespielt (nur wenn noch nicht gespielt)
-    if (!playedIds.has(selectedGroup.id)) {
-      await supabase.from('played_groups').insert({
-        user_id: userId,
-        group_id: selectedGroup.id,
-      });
+    // Check if already played
+    const { data: alreadyPlayed } = await supabase.from('played_groups').select('id').eq('user_id', userId).eq('group_id', selectedGroup.id).maybeSingle();
+    if (!alreadyPlayed) {
+      await supabase.from('played_groups').insert({ user_id: userId, group_id: selectedGroup.id });
     }
 
-    // Speichere die Gruppen-Info für die Anzeige
     setRoundSubcategories(prev => {
       const updated = [...prev];
       updated[updated.length - 1] = { ...sub, group_number: selectedGroup.group_number };
@@ -946,17 +876,17 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
     setPhase('playing');
   };
 
-  const handleRoundComplete = async (userAnswers: boolean[], botAnswers: boolean[]) => {
+  const handleRoundComplete = async (userAnswers: boolean[], botAnswers: boolean[] | null) => {
     const newRoundUserAnswers = [...roundUserAnswers, userAnswers];
-    const newRoundBotAnswers = [...roundBotAnswers, botAnswers];
+    const newRoundBotAnswers = [...roundBotAnswers, botAnswers || []];
     setRoundUserAnswers(newRoundUserAnswers);
     setRoundBotAnswers(newRoundBotAnswers);
 
     const myTotal = newRoundUserAnswers.flat().filter(Boolean).length;
     const botTotal = newRoundBotAnswers.flat().filter(Boolean).length;
 
-    if (currentRound < totalRounds) {
-      if (currentRound === 2 || currentRound === 4) {
+    if (currentRound < TOTAL_ROUNDS) {
+      if (currentRound === 2) {
         setPhase('intermediate');
       } else {
         setCurrentRound(r => r + 1);
@@ -969,16 +899,14 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
         category_id: duel.category_id,
         points: myTotal * 10,
         correct_count: myTotal,
-        total_questions: totalRounds * QUESTIONS_PER_ROUND,
+        total_questions: TOTAL_ROUNDS * QUESTIONS_PER_ROUND,
       });
-
       await supabase.from('duels').update({
         status: 'completed',
         challenger_score: myTotal,
         opponent_score: botTotal,
         completed_at: new Date().toISOString(),
       }).eq('id', duel.id);
-
       setDone(true);
     }
   };
@@ -992,7 +920,7 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
   if (done) {
     const myTotal = roundUserAnswers.flat().filter(Boolean).length;
     const botTotal = roundBotAnswers.flat().filter(Boolean).length;
-    const totalQ = totalRounds * QUESTIONS_PER_ROUND;
+    const totalQ = TOTAL_ROUNDS * QUESTIONS_PER_ROUND;
     const won = myTotal > botTotal;
     const draw = myTotal === botTotal;
 
@@ -1000,11 +928,8 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
       <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
         <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
           <div style={{ fontSize: '52px', marginBottom: '16px' }}>{won ? '🏆' : draw ? '🤝' : '📚'}</div>
-          <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>
-            {won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}
-          </h2>
+          <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
           <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
             <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
@@ -1019,37 +944,6 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
           </div>
-
-          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '24px' }}>
-            {roundUserAnswers.map((userRound, roundIdx) => (
-              <div key={roundIdx} style={{ marginBottom: roundIdx < roundUserAnswers.length - 1 ? '16px' : 0, paddingBottom: roundIdx < roundUserAnswers.length - 1 ? '16px' : 0, borderBottom: roundIdx < roundUserAnswers.length - 1 ? '1px solid #E8DFD0' : 'none' }}>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Runde {roundIdx + 1} · {roundSubcategories[roundIdx]?.name}</div>
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '4px' }}>👤 Du</div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      {userRound.map((correct, qIdx) => (
-                        <div key={qIdx} style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: correct ? '#4CAF50' : '#E53935', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'white' }}>
-                          {correct ? '✓' : '✗'}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '4px' }}>{opponentEmoji} {opponentName.split(' ')[1] || 'Gegner'}</div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      {roundBotAnswers[roundIdx].map((correct, qIdx) => (
-                        <div key={qIdx} style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: correct ? '#4CAF50' : '#E53935', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'white' }}>
-                          {correct ? '✓' : '✗'}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
           <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
         </div>
       </div>
@@ -1059,7 +953,7 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
   if (phase === 'intermediate') {
     const myTotal = roundUserAnswers.flat().filter(Boolean).length;
     const botTotal = roundBotAnswers.flat().filter(Boolean).length;
-    return <IntermediateScore myScore={0} botScore={0} myTotal={myTotal} botTotal={botTotal} roundsPlayed={currentRound} onContinue={handleIntermediateContinue} />;
+    return <IntermediateScore myTotal={myTotal} botTotal={botTotal} roundsPlayed={currentRound} onContinue={handleIntermediateContinue} />;
   }
 
   if (phase === 'announcement' && announcementSub) {
@@ -1083,11 +977,10 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
         </div>
       );
     }
-
     return (
       <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
         <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-          <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px', marginTop: '20px' }}>RUNDE {currentRound} VON {totalRounds}</p>
+          <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px', marginTop: '20px' }}>RUNDE {currentRound} VON {TOTAL_ROUNDS}</p>
           <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Du wählst das Thema</h2>
           <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Für diese Runde</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1111,7 +1004,7 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
 
   if (questions.length < QUESTIONS_PER_ROUND) return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', marginBottom: '24px', textAlign: 'center' }}>Zu wenige Fragen in "{roundSubcategories[currentRound - 1]?.name}".<br />Bitte zuerst Fragen hinzufügen.</p>
+      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', marginBottom: '24px', textAlign: 'center' }}>Zu wenige Fragen in "{roundSubcategories[currentRound - 1]?.name}".<br />Bitte zuerst Fragen hinzufügen und Gruppen erstellen.</p>
       <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück zum Dashboard</button>
     </div>
   );
@@ -1126,38 +1019,595 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
           {userChoosesThisRound ? 'DEINE WAHL' : `${(opponentName.split(' ')[1] || 'GEGNER').toUpperCase()} HAT GEWÄHLT`}
         </span>
       </div>
-      <QuizRound
-        questions={questions}
-        roundNumber={currentRound}
-        totalRounds={totalRounds}
-        bot={bot}
-        onRoundComplete={handleRoundComplete}
-      />
+      <QuizRound questions={questions} roundNumber={currentRound} totalRounds={TOTAL_ROUNDS} bot={bot} onRoundComplete={handleRoundComplete} />
+    </div>
+  );
+}
+
+// USER-DUELL (asynchron)
+function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [phase, setPhase] = useState<'overview' | 'selectSub' | 'playing' | 'waiting' | 'done'>('overview');
+  const [availableSubs, setAvailableSubs] = useState<any[]>([]);
+  const [currentQuestions, setCurrentQuestions] = useState<any[]>([]);
+  const [currentRoundInfo, setCurrentRoundInfo] = useState<any>(null);
+  const [opponentProfile, setOpponentProfile] = useState<any>(null);
+  const [duelData, setDuelData] = useState<any>(duel);
+
+  const isChallenger = duel.challenger_id === userId;
+  const opponentId = isChallenger ? duel.opponent_id : duel.challenger_id;
+  const roundsData = duelData.rounds_data || [];
+
+  useEffect(() => {
+    const loadInit = async () => {
+      setLoading(true);
+      const { data: oppProfile } = await supabase.from('profiles').select('username').eq('id', opponentId).single();
+      setOpponentProfile(oppProfile);
+
+      const { data: subs } = await supabase.from('subcategories').select('*').eq('category_id', duel.category_id);
+      const subsWithCounts: any[] = [];
+      for (const sub of subs || []) {
+        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('subcategory_id', sub.id);
+        subsWithCounts.push({ ...sub, question_count: count || 0 });
+      }
+      setAvailableSubs(subsWithCounts);
+      setLoading(false);
+
+      // Determine phase based on duel state
+      determineNextPhase(roundsData);
+    };
+    loadInit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duel.id]);
+
+  const determineNextPhase = (rounds: any[]) => {
+    // Check if duel is complete
+    if (rounds.length === TOTAL_ROUNDS && rounds[TOTAL_ROUNDS - 1].challenger_answers && rounds[TOTAL_ROUNDS - 1].opponent_answers) {
+      setPhase('done');
+      return;
+    }
+    // Check current state
+    if (duelData.current_turn_user_id !== userId) {
+      setPhase('waiting');
+      return;
+    }
+    setPhase('overview');
+  };
+
+  // Round is "my turn" if current_turn_user_id === userId
+  // Possible actions based on state:
+  // - No rounds yet: challenger must choose sub (round 1)
+  // - Round has only challenger's sub/answers: opponent plays same sub
+  // - Round has both answers: next round, check whose turn to choose
+
+  const myRoundNumber = (() => {
+    // Counts how many rounds this user has answered
+    const count = roundsData.filter((r: any) => {
+      return isChallenger ? r.challenger_answers : r.opponent_answers;
+    }).length;
+    return count + 1;
+  })();
+
+  const selectSubAndPlay = async (sub: any) => {
+    setLoading(true);
+    
+    const currentRound = roundsData.length;
+    const isNewRound = roundsData.length < TOTAL_ROUNDS && (
+      currentRound === 0 || 
+      (roundsData[currentRound - 1]?.challenger_answers && roundsData[currentRound - 1]?.opponent_answers)
+    );
+
+    let selectedGroup;
+    let roundData: any;
+
+    if (isNewRound) {
+      // New round - find best group for both users
+      selectedGroup = await findBestGroup(sub.id, [userId, opponentId]);
+      if (!selectedGroup) {
+        setLoading(false);
+        return;
+      }
+      roundData = {
+        round: currentRound + 1,
+        subcategory_id: sub.id,
+        subcategory_name: sub.name,
+        group_id: selectedGroup.id,
+        group_number: selectedGroup.group_number,
+        chosen_by: userId,
+      };
+    } else {
+      // Playing existing round (same sub/group as opponent)
+      const existingRound = roundsData[currentRound - 1];
+      selectedGroup = { id: existingRound.group_id, group_number: existingRound.group_number };
+      roundData = existingRound;
+    }
+
+    // Load questions for this group
+    const { data: members } = await supabase
+      .from('question_group_members')
+      .select('position, questions(*)')
+      .eq('group_id', selectedGroup.id)
+      .order('position', { ascending: true });
+    const groupQuestions = members?.map((m: any) => m.questions).filter(Boolean) || [];
+
+    // Mark as played
+    const { data: alreadyPlayed } = await supabase.from('played_groups').select('id').eq('user_id', userId).eq('group_id', selectedGroup.id).maybeSingle();
+    if (!alreadyPlayed) {
+      await supabase.from('played_groups').insert({ user_id: userId, group_id: selectedGroup.id });
+    }
+
+    setCurrentQuestions(groupQuestions);
+    setCurrentRoundInfo(roundData);
+    setLoading(false);
+    setPhase('playing');
+  };
+
+  const playExistingRound = async () => {
+    setLoading(true);
+    const currentRound = roundsData[roundsData.length - 1];
+    const { data: members } = await supabase
+      .from('question_group_members')
+      .select('position, questions(*)')
+      .eq('group_id', currentRound.group_id)
+      .order('position', { ascending: true });
+    const groupQuestions = members?.map((m: any) => m.questions).filter(Boolean) || [];
+
+    const { data: alreadyPlayed } = await supabase.from('played_groups').select('id').eq('user_id', userId).eq('group_id', currentRound.group_id).maybeSingle();
+    if (!alreadyPlayed) {
+      await supabase.from('played_groups').insert({ user_id: userId, group_id: currentRound.group_id });
+    }
+
+    setCurrentQuestions(groupQuestions);
+    setCurrentRoundInfo(currentRound);
+    setLoading(false);
+    setPhase('playing');
+  };
+
+  const handleRoundComplete = async (userAnswers: boolean[], _bot: any, selectedAnswers: string[]) => {
+    setLoading(true);
+
+    const currentRound = currentRoundInfo.round;
+    const newRoundsData = [...roundsData];
+    const roundIdx = newRoundsData.findIndex((r: any) => r.round === currentRound);
+
+    if (roundIdx === -1) {
+      // New round
+      newRoundsData.push({
+        ...currentRoundInfo,
+        [isChallenger ? 'challenger_answers' : 'opponent_answers']: userAnswers,
+        [isChallenger ? 'challenger_selections' : 'opponent_selections']: selectedAnswers,
+      });
+    } else {
+      // Playing existing round
+      newRoundsData[roundIdx] = {
+        ...newRoundsData[roundIdx],
+        [isChallenger ? 'challenger_answers' : 'opponent_answers']: userAnswers,
+        [isChallenger ? 'challenger_selections' : 'opponent_selections']: selectedAnswers,
+      };
+    }
+
+    // Determine next turn
+    const lastRound = newRoundsData[newRoundsData.length - 1];
+    const bothAnswered = lastRound.challenger_answers && lastRound.opponent_answers;
+    
+    let newStatus = duelData.status;
+    let newTurnUserId = duelData.current_turn_user_id;
+
+    if (newRoundsData.length === TOTAL_ROUNDS && bothAnswered) {
+      newStatus = 'completed';
+    } else if (bothAnswered) {
+      // Round complete, next round - the user who didn't choose this round chooses next
+      newTurnUserId = lastRound.chosen_by === userId ? opponentId : userId;
+    } else {
+      // Partner must now play the same round
+      newTurnUserId = opponentId;
+    }
+
+    // Calculate scores
+    const challengerScore = newRoundsData.reduce((sum: number, r: any) => sum + (r.challenger_answers?.filter(Boolean).length || 0), 0);
+    const opponentScore = newRoundsData.reduce((sum: number, r: any) => sum + (r.opponent_answers?.filter(Boolean).length || 0), 0);
+
+    const { error } = await supabase.from('duels').update({
+      rounds_data: newRoundsData,
+      status: newStatus,
+      current_turn_user_id: newStatus === 'completed' ? null : newTurnUserId,
+      challenger_score: challengerScore,
+      opponent_score: opponentScore,
+      completed_at: newStatus === 'completed' ? new Date().toISOString() : null,
+    }).eq('id', duelData.id);
+
+    if (error) {
+      console.error('Failed to update duel:', error);
+    }
+
+    // Send notification to opponent
+    if (newStatus !== 'completed' && newTurnUserId === opponentId) {
+      const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
+      await supabase.from('notifications').insert({
+        user_id: opponentId,
+        type: 'duel_turn',
+        title: 'Du bist dran!',
+        message: `${myProfile?.username} hat eine Runde beendet - du bist jetzt am Zug`,
+        related_id: duelData.id,
+      });
+    } else if (newStatus === 'completed') {
+      const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
+      await supabase.from('notifications').insert({
+        user_id: opponentId,
+        type: 'duel_completed',
+        title: 'Duell beendet',
+        message: `Das Duell gegen ${myProfile?.username} ist fertig - schau dir das Ergebnis an!`,
+        related_id: duelData.id,
+      });
+    }
+
+    // Update local state
+    setDuelData({
+      ...duelData,
+      rounds_data: newRoundsData,
+      status: newStatus,
+      current_turn_user_id: newStatus === 'completed' ? null : newTurnUserId,
+    });
+
+    setLoading(false);
+
+    if (newStatus === 'completed') {
+      setPhase('done');
+    } else {
+      setPhase('waiting');
+    }
+  };
+
+  // Whose turn to choose subcategory?
+  // Round 1 & 3: challenger chooses
+  // Round 2 & 4: opponent chooses
+  const whoChoosesRound = (round: number) => round === 1 || round === 3 ? duel.challenger_id : duel.opponent_id;
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+    </div>
+  );
+
+  if (phase === 'done') {
+    const challengerScore = roundsData.reduce((sum: number, r: any) => sum + (r.challenger_answers?.filter(Boolean).length || 0), 0);
+    const opponentScore = roundsData.reduce((sum: number, r: any) => sum + (r.opponent_answers?.filter(Boolean).length || 0), 0);
+    const myScore = isChallenger ? challengerScore : opponentScore;
+    const oppScore = isChallenger ? opponentScore : challengerScore;
+    const won = myScore > oppScore;
+    const draw = myScore === oppScore;
+    const totalQ = TOTAL_ROUNDS * QUESTIONS_PER_ROUND;
+
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+        <div style={{ maxWidth: '500px', margin: '0 auto', textAlign: 'center', paddingTop: '40px' }}>
+          <div style={{ fontSize: '52px', marginBottom: '16px' }}>{won ? '🏆' : draw ? '🤝' : '📚'}</div>
+          <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
+          <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
+            <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
+              <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
+              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
+              <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myScore}</div>
+              <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
+            </div>
+            <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
+              <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
+              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>{opponentProfile?.username?.toUpperCase() || 'GEGNER'}</div>
+              <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{oppScore}</div>
+              <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
+            </div>
+          </div>
+          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '24px', textAlign: 'left' }}>
+            {roundsData.map((round: any, roundIdx: number) => (
+              <div key={roundIdx} style={{ marginBottom: roundIdx < roundsData.length - 1 ? '16px' : 0, paddingBottom: roundIdx < roundsData.length - 1 ? '16px' : 0, borderBottom: roundIdx < roundsData.length - 1 ? '1px solid #E8DFD0' : 'none' }}>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Runde {round.round} · {round.subcategory_name} · Gruppe {round.group_number}</div>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '4px' }}>👤 Du</div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {(isChallenger ? round.challenger_answers : round.opponent_answers)?.map((correct: boolean, qIdx: number) => (
+                        <div key={qIdx} style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: correct ? '#4CAF50' : '#E53935', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'white' }}>{correct ? '✓' : '✗'}</div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '4px' }}>👤 {opponentProfile?.username || 'Gegner'}</div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {(isChallenger ? round.opponent_answers : round.challenger_answers)?.map((correct: boolean, qIdx: number) => (
+                        <div key={qIdx} style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: correct ? '#4CAF50' : '#E53935', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'white' }}>{correct ? '✓' : '✗'}</div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'waiting') {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+        <div style={{ textAlign: 'center', maxWidth: '500px' }}>
+          <div style={{ fontSize: '52px', marginBottom: '16px' }}>⏳</div>
+          <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '12px', fontSize: 'clamp(18px, 5vw, 24px)' }}>WARTEN AUF GEGNER</h2>
+          <p style={{ color: colors.text, fontSize: '15px', marginBottom: '24px' }}>{opponentProfile?.username} ist jetzt am Zug</p>
+          <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '32px' }}>Du bekommst eine Benachrichtigung sobald du wieder dran bist.</p>
+          <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'playing') {
+    const roundNum = currentRoundInfo.round;
+    return (
+      <div>
+        <div style={{ backgroundColor: colors.light, padding: '8px 16px', fontFamily: 'Helvetica, Arial, sans-serif', textAlign: 'center' }}>
+          <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>
+            {currentRoundInfo.subcategory_name.toUpperCase()} · GRUPPE {currentRoundInfo.group_number}
+          </span>
+        </div>
+        <QuizRound questions={currentQuestions} roundNumber={roundNum} totalRounds={TOTAL_ROUNDS} bot={null} onRoundComplete={handleRoundComplete} />
+      </div>
+    );
+  }
+
+  // Phase: overview - determine if user needs to choose or play existing
+  const currentRound = roundsData.length;
+  const lastRound = currentRound > 0 ? roundsData[currentRound - 1] : null;
+  const needsToPlayExistingRound = lastRound && !(isChallenger ? lastRound.challenger_answers : lastRound.opponent_answers);
+
+  if (needsToPlayExistingRound) {
+    // Play the round that opponent just chose
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+        <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
+          <button onClick={onFinish} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+          <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px' }}>RUNDE {lastRound.round} VON {TOTAL_ROUNDS}</p>
+          <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>{opponentProfile?.username} hat gewählt</h2>
+          <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Thema: {lastRound.subcategory_name} · Gruppe {lastRound.group_number}</p>
+          <button style={btnPrimary} onClick={playExistingRound}>Runde spielen</button>
+        </div>
+      </div>
+    );
+  }
+
+  // User must choose subcategory
+  const nextRound = currentRound + 1;
+  const userShouldChoose = whoChoosesRound(nextRound) === userId;
+
+  if (!userShouldChoose) {
+    setPhase('waiting');
+    return null;
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
+        <button onClick={onFinish} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px' }}>RUNDE {nextRound} VON {TOTAL_ROUNDS}</p>
+        <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Du wählst das Thema</h2>
+        <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Gegen {opponentProfile?.username}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {availableSubs.map(sub => (
+            <div key={sub.id} onClick={() => selectSubAndPlay(sub)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px 20px', cursor: 'pointer', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ color: colors.text, fontSize: '15px' }}>{sub.name}</div>
+              <div style={{ color: colors.muted, fontSize: '14px' }}>{sub.question_count} Fragen</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Duell-Übersicht
+function DuelsList({ userId, onOpenDuel, onBack, onNewUserDuel }: { userId: string, onOpenDuel: (duel: any) => void, onBack: () => void, onNewUserDuel: () => void }) {
+  const [duels, setDuels] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadDuels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  const loadDuels = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('duels')
+      .select(`
+        *,
+        challenger:profiles!duels_challenger_id_fkey(id, username),
+        opponent:profiles!duels_opponent_id_fkey(id, username),
+        categories(name)
+      `)
+      .or(`challenger_id.eq.${userId},opponent_id.eq.${userId}`)
+      .eq('opponent_is_bot', false)
+      .order('created_at', { ascending: false });
+    setDuels(data || []);
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>USER-DUELLE</h2>
+        
+        <button style={btnPrimary} onClick={onNewUserDuel}>+ Neues Duell starten</button>
+        
+        {loading ? (
+          <p style={{ color: colors.muted, textAlign: 'center', marginTop: '24px' }}>LADEN...</p>
+        ) : duels.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px 16px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚔️</div>
+            <p style={{ color: colors.muted, fontSize: '15px' }}>Noch keine Duelle</p>
+          </div>
+        ) : (
+          <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {duels.map((d) => {
+              const isChallenger = d.challenger_id === userId;
+              const opponent = isChallenger ? d.opponent : d.challenger;
+              const myScore = isChallenger ? (d.challenger_score || 0) : (d.opponent_score || 0);
+              const oppScore = isChallenger ? (d.opponent_score || 0) : (d.challenger_score || 0);
+              const isMyTurn = d.current_turn_user_id === userId;
+              const isDone = d.status === 'completed';
+              
+              let statusText = '';
+              let statusColor = colors.muted;
+              if (isDone) {
+                if (myScore > oppScore) { statusText = 'Gewonnen 🏆'; statusColor = '#4CAF50'; }
+                else if (myScore < oppScore) { statusText = 'Verloren'; statusColor = '#E53935'; }
+                else { statusText = 'Unentschieden'; statusColor = colors.muted; }
+              } else if (isMyTurn) {
+                statusText = 'Du bist dran!';
+                statusColor = colors.primary;
+              } else {
+                statusText = `Warte auf ${opponent?.username}`;
+              }
+
+              return (
+                <div key={d.id} onClick={() => onOpenDuel(d)} style={{ backgroundColor: '#FDFAF5', border: `1px solid ${isMyTurn && !isDone ? colors.primary : '#C9B99A'}`, borderRadius: '4px', padding: '16px', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold' }}>vs {opponent?.username}</div>
+                    {isDone && <div style={{ fontSize: '14px', color: colors.text }}>{myScore} : {oppScore}</div>}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name}</div>
+                    <div style={{ fontSize: '13px', color: statusColor, fontWeight: isMyTurn && !isDone ? 'bold' : 'normal' }}>{statusText}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Kategorie-Auswahl beim Starten eines User-Duells
+function UserDuelCategorySelect({ opponent, userId, onBack, onStart }: { opponent: any, userId: string, onBack: () => void, onStart: (duel: any) => void }) {
+  const [categories, setCategories] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: cats } = await supabase.from('categories').select('*');
+      const catsWithCounts: any[] = [];
+      for (const cat of cats || []) {
+        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('category_id', cat.id);
+        catsWithCounts.push({ ...cat, question_count: count || 0 });
+      }
+      setCategories(catsWithCounts);
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const startDuel = async (category: any) => {
+    const { data, error } = await supabase.from('duels').insert({
+      challenger_id: userId,
+      opponent_id: opponent.id,
+      opponent_is_bot: false,
+      category_id: category.id,
+      status: 'challenger_turn',
+      current_turn_user_id: userId,
+      rounds_data: [],
+    }).select('*, categories(name)').single();
+
+    if (error) {
+      console.error(error);
+      alert('Fehler beim Erstellen des Duells');
+      return;
+    }
+
+    // Send notification
+    const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
+    await supabase.from('notifications').insert({
+      user_id: opponent.id,
+      type: 'duel_challenge',
+      title: 'Neue Duell-Herausforderung',
+      message: `${myProfile?.username} hat dich zum Duell herausgefordert in ${category.name}`,
+      related_id: data.id,
+    });
+
+    onStart(data);
+  };
+
+  const icons: Record<string, string> = {
+    'Geschichte der Schweiz': '🇨🇭',
+    'Philosophie & Denker': '💭',
+    'Weltgeschichte': '🌍',
+  };
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Duell gegen {opponent.username}</h2>
+        <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '20px' }}>Wähle eine Kategorie</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {categories.map(cat => (
+            <div key={cat.id} onClick={() => startDuel(cat)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ fontSize: '28px' }}>{icons[cat.name] || '📚'}</div>
+                <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
+              </div>
+              <div style={{ color: colors.muted, fontSize: '14px' }}>{cat.question_count} Fragen</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
-  const [view, setView] = useState<'home' | 'selectCategory' | 'selectOpponent' | 'duel' | 'highscores' | 'admin' | 'users' | 'notifications'>('home');
+  const [view, setView] = useState<'home' | 'selectCategoryBot' | 'selectOpponentBot' | 'botDuel' | 'userDuel' | 'userDuelsList' | 'userSearch' | 'userDuelCategory' | 'highscores' | 'admin' | 'notifications'>('home');
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [activeDuel, setActiveDuel] = useState<any>(null);
+  const [challengingUser, setChallengingUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [activeDuelsCount, setActiveDuelsCount] = useState(0);
+
+  const loadUnreadCount = async () => {
+    const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_read', false);
+    setUnreadCount(count || 0);
+  };
+
+  const loadActiveDuelsCount = async () => {
+    const { count } = await supabase
+      .from('duels')
+      .select('*', { count: 'exact', head: true })
+      .eq('opponent_is_bot', false)
+      .eq('current_turn_user_id', user.id);
+    setActiveDuelsCount(count || 0);
+  };
 
   useEffect(() => {
     const loadData = async () => {
       const { data: cats } = await supabase.from('categories').select('*');
       const categoriesWithCounts: any[] = [];
-      
       for (const cat of cats || []) {
         const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('category_id', cat.id);
         categoriesWithCounts.push({ ...cat, question_count: count || 0 });
       }
-      
       setCategories(categoriesWithCounts);
-      
       const { count: total } = await supabase.from('questions').select('*', { count: 'exact', head: true });
       setTotalQuestions(total || 0);
     };
@@ -1168,21 +1618,15 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
 
     loadData();
     loadUnreadCount();
+    loadActiveDuelsCount();
 
-    // Polle alle 30 Sekunden für neue Notifications
-    const interval = setInterval(loadUnreadCount, 30000);
+    const interval = setInterval(() => {
+      loadUnreadCount();
+      loadActiveDuelsCount();
+    }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
-
-  const loadUnreadCount = async () => {
-    const { count } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('is_read', false);
-    setUnreadCount(count || 0);
-  };
 
   const icons: Record<string, string> = {
     'Geschichte der Schweiz': '🇨🇭',
@@ -1200,26 +1644,26 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     }).select().single();
     if (data) {
       setActiveDuel(data);
-      setView('duel');
+      setView('botDuel');
     }
   };
 
-  if (view === 'duel' && activeDuel) return (
-    <DuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('home'); }} />
-  );
+  if (view === 'botDuel' && activeDuel) return <BotDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('home'); loadActiveDuelsCount(); }} />;
+  if (view === 'userDuel' && activeDuel) return <UserDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('userDuelsList'); loadActiveDuelsCount(); }} />;
   if (view === 'highscores') return <Highscores onBack={() => setView('home')} />;
   if (view === 'admin') return <AdminImport onBack={() => setView('home')} />;
-  if (view === 'users') return <UserSearch userId={user.id} onBack={() => setView('home')} />;
   if (view === 'notifications') return <Notifications userId={user.id} onBack={() => { setView('home'); loadUnreadCount(); }} />;
-  if (view === 'selectOpponent') return (
+  if (view === 'userSearch') return <UserSearch userId={user.id} onBack={() => setView('home')} onChallenge={(opp) => { setChallengingUser(opp); setView('userDuelCategory'); }} />;
+  if (view === 'userDuelCategory' && challengingUser) return <UserDuelCategorySelect opponent={challengingUser} userId={user.id} onBack={() => setView('userSearch')} onStart={(duel) => { setChallengingUser(null); setActiveDuel(duel); setView('userDuel'); }} />;
+  if (view === 'userDuelsList') return <DuelsList userId={user.id} onOpenDuel={(duel) => { setActiveDuel(duel); setView('userDuel'); }} onBack={() => setView('home')} onNewUserDuel={() => setView('userSearch')} />;
+
+  if (view === 'selectOpponentBot') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={() => setView('selectCategory')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Wähle deinen Gegner</h2>
+        <button onClick={() => setView('selectCategoryBot')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Wähle einen Bot</h2>
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>{selectedCategory?.name}</p>
-
-        <p style={{ color: colors.text, fontSize: '14px', marginBottom: '12px', letterSpacing: '1px' }}>GEGEN EINEN BOT</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '32px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {bots.map(bot => (
             <div key={bot.name} onClick={() => startBotDuel(bot)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ fontSize: '28px', flexShrink: 0 }}>{bot.emoji}</div>
@@ -1230,16 +1674,11 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
             </div>
           ))}
         </div>
-
-        <p style={{ color: colors.text, fontSize: '14px', marginBottom: '12px', letterSpacing: '1px' }}>GEGEN EINEN USER</p>
-        <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px', borderRadius: '4px', opacity: 0.5 }}>
-          <div style={{ color: colors.muted, fontSize: '14px' }}>👥 Duelle gegen echte User — bald verfügbar</div>
-        </div>
       </div>
     </div>
   );
 
-  if (view === 'selectCategory') return (
+  if (view === 'selectCategoryBot') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
         <button onClick={() => setView('home')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
@@ -1247,7 +1686,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '20px' }}>Das Thema pro Runde wählst du später im Duell</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {categories.map(cat => (
-            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectOpponent'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between' }}>
+            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectOpponentBot'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <div style={{ fontSize: '28px' }}>{icons[cat.name] || '📚'}</div>
                 <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
@@ -1263,33 +1702,13 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', paddingTop: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', paddingTop: '12px' }}>
           <h1 style={{ color: colors.primary, letterSpacing: '2px', margin: 0, fontSize: 'clamp(20px, 5vw, 28px)' }}>BOOKSMART</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button 
-              onClick={() => setView('notifications')} 
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', position: 'relative', padding: '4px 8px' }}
-            >
+            <button onClick={() => setView('notifications')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', position: 'relative', padding: '4px 8px' }}>
               🔔
               {unreadCount > 0 && (
-                <span style={{ 
-                  position: 'absolute', 
-                  top: '0', 
-                  right: '0', 
-                  backgroundColor: '#E53935', 
-                  color: 'white', 
-                  fontSize: '11px', 
-                  fontWeight: 'bold', 
-                  borderRadius: '50%', 
-                  minWidth: '18px', 
-                  height: '18px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  padding: '0 4px',
-                }}>
-                  {unreadCount}
-                </span>
+                <span style={{ position: 'absolute', top: '0', right: '0', backgroundColor: '#E53935', color: 'white', fontSize: '11px', fontWeight: 'bold', borderRadius: '50%', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{unreadCount}</span>
               )}
             </button>
             <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px' }}>Abmelden</button>
@@ -1298,23 +1717,31 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
         <p style={{ color: colors.muted, fontSize: '13px', letterSpacing: '1px', marginBottom: '8px' }}>WILLKOMMEN ZURÜCK</p>
         <p style={{ color: colors.text, fontSize: '15px', marginBottom: '32px' }}>{totalQuestions} Fragen hinterlegt</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div onClick={() => setView('selectCategory')} style={{ backgroundColor: colors.primary, padding: '28px 20px', cursor: 'pointer', borderRadius: '4px' }}>
+          <div onClick={() => setView('selectCategoryBot')} style={{ backgroundColor: colors.primary, padding: '28px 20px', cursor: 'pointer', borderRadius: '4px' }}>
+            <div style={{ fontSize: '28px', marginBottom: '10px' }}>🤖</div>
+            <div style={{ color: '#F5F0E8', fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>DUELL VS BOT</div>
+            <div style={{ color: '#C9A0AC', fontSize: '12px' }}>Spiele gegen einen Bot</div>
+          </div>
+          <div onClick={() => setView('userDuelsList')} style={{ backgroundColor: colors.primary, padding: '28px 20px', cursor: 'pointer', borderRadius: '4px', position: 'relative' }}>
             <div style={{ fontSize: '28px', marginBottom: '10px' }}>⚔️</div>
-            <div style={{ color: '#F5F0E8', fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>DUELL STARTEN</div>
-            <div style={{ color: '#C9A0AC', fontSize: '12px' }}>Bot oder echter Gegner</div>
+            <div style={{ color: '#F5F0E8', fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>DUELL VS USER</div>
+            <div style={{ color: '#C9A0AC', fontSize: '12px' }}>Spiele gegen echte Spieler</div>
+            {activeDuelsCount > 0 && (
+              <span style={{ position: 'absolute', top: '12px', right: '12px', backgroundColor: '#F5F0E8', color: colors.primary, fontSize: '12px', fontWeight: 'bold', borderRadius: '12px', padding: '3px 8px' }}>{activeDuelsCount} dran</span>
+            )}
           </div>
           <div onClick={() => setView('highscores')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer' }}>
             <div style={{ fontSize: '28px', marginBottom: '10px' }}>🏆</div>
             <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>HIGHSCORES</div>
-            <div style={{ color: colors.muted, fontSize: '12px' }}>Beste Spieler anzeigen</div>
+            <div style={{ color: colors.muted, fontSize: '12px' }}>Beste Spieler</div>
           </div>
-          <div onClick={() => setView('users')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer' }}>
+          <div onClick={() => setView('userSearch')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer' }}>
             <div style={{ fontSize: '28px', marginBottom: '10px' }}>👥</div>
-            <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>SPIELER SUCHEN</div>
-            <div style={{ color: colors.muted, fontSize: '12px' }}>Freunde & Duelle</div>
+            <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>FREUNDE</div>
+            <div style={{ color: colors.muted, fontSize: '12px' }}>Spieler suchen</div>
           </div>
           {isAdmin && (
-            <div onClick={() => setView('admin')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer' }}>
+            <div onClick={() => setView('admin')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer', gridColumn: 'span 2' }}>
               <div style={{ fontSize: '28px', marginBottom: '10px' }}>⚙️</div>
               <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>ADMIN</div>
               <div style={{ color: colors.muted, fontSize: '12px' }}>Fragen importieren</div>
