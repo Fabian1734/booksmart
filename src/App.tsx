@@ -210,13 +210,21 @@ function AdminImport({ onBack }: { onBack: () => void }) {
 
         if (!questionsInSub || questionsInSub.length === 0) continue;
 
-        // Hole bereits gruppierte Frage-IDs
-        const { data: existingMembers } = await supabase
-          .from('question_group_members')
-          .select('question_id, group_id, question_groups!inner(subcategory_id)')
-          .eq('question_groups.subcategory_id', sub.id);
+        // Hole bereits gruppierte Frage-IDs für diese Subkategorie
+        const { data: existingGroups } = await supabase
+          .from('question_groups')
+          .select('id')
+          .eq('subcategory_id', sub.id);
 
-        const groupedIds = new Set(existingMembers?.map((m: any) => m.question_id) || []);
+        let groupedIds = new Set<string>();
+        if (existingGroups && existingGroups.length > 0) {
+          const groupIds = existingGroups.map(g => g.id);
+          const { data: existingMembers } = await supabase
+            .from('question_group_members')
+            .select('question_id')
+            .in('group_id', groupIds);
+          groupedIds = new Set(existingMembers?.map(m => m.question_id) || []);
+        }
 
         // Ungruppierte Fragen
         const ungrouped = questionsInSub.filter(q => !groupedIds.has(q.id));
@@ -224,15 +232,14 @@ function AdminImport({ onBack }: { onBack: () => void }) {
         if (ungrouped.length < 3) continue; // Nicht genug für eine neue Gruppe
 
         // Höchste bestehende Gruppennummer
-        const { data: maxGroup } = await supabase
+        const { data: maxGroups } = await supabase
           .from('question_groups')
           .select('group_number')
           .eq('subcategory_id', sub.id)
           .order('group_number', { ascending: false })
-          .limit(1)
-          .single();
+          .limit(1);
 
-        let nextGroupNumber = (maxGroup?.group_number || 0) + 1;
+        let nextGroupNumber = (maxGroups && maxGroups.length > 0 ? maxGroups[0].group_number : 0) + 1;
         let createdForThisSub = 0;
 
         // Erstelle 3er-Gruppen aus ungruppierten Fragen
