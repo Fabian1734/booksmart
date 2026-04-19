@@ -229,6 +229,8 @@ function AdminImport({ onBack }: { onBack: () => void }) {
         // Ungruppierte Fragen
         const ungrouped = questionsInSub.filter(q => !groupedIds.has(q.id));
 
+        console.log(`${sub.name}: ${questionsInSub.length} Fragen insgesamt, ${ungrouped.length} ungruppiert`);
+
         if (ungrouped.length < 3) continue; // Nicht genug für eine neue Gruppe
 
         // Höchste bestehende Gruppennummer
