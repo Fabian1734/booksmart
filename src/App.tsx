@@ -117,6 +117,8 @@ function AdminImport({ onBack }: { onBack: () => void }) {
   const [questions, setQuestions] = useState<CSVQuestion[]>([]);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState('');
+  const [grouping, setGrouping] = useState(false);
+  const [groupResult, setGroupResult] = useState('');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -187,6 +189,99 @@ function AdminImport({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const handleCreateGroups = async () => {
+    setGrouping(true);
+    setGroupResult('');
+    try {
+      // Hole alle Subkategorien
+      const { data: subs } = await supabase.from('subcategories').select('*');
+      if (!subs) throw new Error('Keine Subkategorien gefunden');
+
+      let totalGroupsCreated = 0;
+      let subResults: string[] = [];
+
+      for (const sub of subs) {
+        // Hole alle Fragen dieser Subkategorie
+        const { data: questionsInSub } = await supabase
+          .from('questions')
+          .select('id')
+          .eq('subcategory_id', sub.id)
+          .order('created_at', { ascending: true });
+
+        if (!questionsInSub || questionsInSub.length === 0) continue;
+
+        // Hole bereits gruppierte Frage-IDs
+        const { data: existingMembers } = await supabase
+          .from('question_group_members')
+          .select('question_id, group_id, question_groups!inner(subcategory_id)')
+          .eq('question_groups.subcategory_id', sub.id);
+
+        const groupedIds = new Set(existingMembers?.map((m: any) => m.question_id) || []);
+
+        // Ungruppierte Fragen
+        const ungrouped = questionsInSub.filter(q => !groupedIds.has(q.id));
+
+        if (ungrouped.length < 3) continue; // Nicht genug für eine neue Gruppe
+
+        // Höchste bestehende Gruppennummer
+        const { data: maxGroup } = await supabase
+          .from('question_groups')
+          .select('group_number')
+          .eq('subcategory_id', sub.id)
+          .order('group_number', { ascending: false })
+          .limit(1)
+          .single();
+
+        let nextGroupNumber = (maxGroup?.group_number || 0) + 1;
+        let createdForThisSub = 0;
+
+        // Erstelle 3er-Gruppen aus ungruppierten Fragen
+        for (let i = 0; i + 2 < ungrouped.length; i += 3) {
+          const { data: newGroup, error: groupError } = await supabase
+            .from('question_groups')
+            .insert({
+              subcategory_id: sub.id,
+              group_number: nextGroupNumber,
+            })
+            .select()
+            .single();
+
+          if (groupError || !newGroup) throw groupError;
+
+          const members = [
+            { group_id: newGroup.id, question_id: ungrouped[i].id, position: 1 },
+            { group_id: newGroup.id, question_id: ungrouped[i + 1].id, position: 2 },
+            { group_id: newGroup.id, question_id: ungrouped[i + 2].id, position: 3 },
+          ];
+
+          const { error: memberError } = await supabase
+            .from('question_group_members')
+            .insert(members);
+
+          if (memberError) throw memberError;
+
+          nextGroupNumber++;
+          createdForThisSub++;
+          totalGroupsCreated++;
+        }
+
+        if (createdForThisSub > 0) {
+          subResults.push(`${sub.name}: ${createdForThisSub} neue Gruppen`);
+        }
+      }
+
+      if (totalGroupsCreated === 0) {
+        setGroupResult('ℹ️ Keine neuen Gruppen erstellt (nicht genug ungruppierte Fragen).');
+      } else {
+        setGroupResult(`✅ ${totalGroupsCreated} neue Gruppen erstellt:\n${subResults.join('\n')}`);
+      }
+    } catch (err: any) {
+      setGroupResult(`❌ Fehler: ${err.message}`);
+    } finally {
+      setGrouping(false);
+    }
+  }; 
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px 16px' }}>
@@ -231,15 +326,30 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
           </>
         )}
 
-        {result && (
+{result && (
           <div style={{ backgroundColor: result.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${result.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
             {result}
           </div>
         )}
+
+        <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
+          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>3er-Gruppen verwalten</h3>
+          <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>
+            Erstellt automatisch 3er-Gruppen aus allen ungruppierten Fragen. Jede Gruppe bekommt eine aufsteigende Nummer pro Subkategorie.
+          </p>
+          <button style={btnPrimary} onClick={handleCreateGroups} disabled={grouping}>
+            {grouping ? 'Erstelle Gruppen...' : 'Gruppen erstellen'}
+          </button>
+          {groupResult && (
+            <div style={{ backgroundColor: groupResult.startsWith('✅') ? '#E8F5E9' : groupResult.startsWith('ℹ️') ? '#FFF9E6' : '#FDECEA', border: `1px solid ${groupResult.startsWith('✅') ? '#4CAF50' : groupResult.startsWith('ℹ️') ? '#FFC107' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
+              {groupResult}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
-}
+}        
 
 function UserSearch({ userId, onBack }: { userId: string, onBack: () => void }) {
   const [searchUsername, setSearchUsername] = useState('');
