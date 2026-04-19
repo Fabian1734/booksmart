@@ -915,18 +915,7 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
   // Finde tiefste ungespielte Gruppe, fallback auf erste Gruppe
   const selectedGroup: { id: string; group_number: number } = allGroups.find(g => !playedIds.has(g.id)) || allGroups[0];
 
-   // Wenn alle gespielt: von vorne beginnen (nimm Gruppe 1)
-   if (!selectedGroup) {
-    selectedGroup = allGroups[0];
-  }
-
-  // TypeScript Safety
-  if (!selectedGroup) {
-    setQuestions([]);
-    setLoading(false);
-    setPhase('playing');
-    return;
-  } 
+   
 
     // Lade die 3 Fragen dieser Gruppe in der richtigen Reihenfolge
     const { data: members } = await supabase
