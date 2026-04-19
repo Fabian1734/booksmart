@@ -889,12 +889,62 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
   const loadQuestionsForSub = async (sub: any) => {
     setLoading(true);
     setRoundSubcategories(prev => [...prev, sub]);
-    const { data } = await supabase
-      .from('questions')
-      .select('*')
+
+    // Hole alle Gruppen dieser Subkategorie (sortiert nach group_number)
+    const { data: allGroups } = await supabase
+      .from('question_groups')
+      .select('id, group_number')
       .eq('subcategory_id', sub.id)
-      .limit(QUESTIONS_PER_ROUND);
-    setQuestions(data || []);
+      .order('group_number', { ascending: true });
+
+    if (!allGroups || allGroups.length === 0) {
+      setQuestions([]);
+      setLoading(false);
+      setPhase('playing');
+      return;
+    }
+
+    // Hole die vom User bereits gespielten Gruppen
+    const { data: playedData } = await supabase
+      .from('played_groups')
+      .select('group_id')
+      .eq('user_id', userId);
+
+    const playedIds = new Set(playedData?.map(p => p.group_id) || []);
+
+    // Finde tiefste ungespielte Gruppe
+    let selectedGroup = allGroups.find(g => !playedIds.has(g.id));
+
+    // Wenn alle gespielt: von vorne beginnen (nimm Gruppe 1)
+    if (!selectedGroup) {
+      selectedGroup = allGroups[0];
+    }
+
+    // Lade die 3 Fragen dieser Gruppe in der richtigen Reihenfolge
+    const { data: members } = await supabase
+      .from('question_group_members')
+      .select('position, questions(*)')
+      .eq('group_id', selectedGroup.id)
+      .order('position', { ascending: true });
+
+    const groupQuestions = members?.map((m: any) => m.questions).filter(Boolean) || [];
+
+    // Markiere Gruppe als gespielt (nur wenn noch nicht gespielt)
+    if (!playedIds.has(selectedGroup.id)) {
+      await supabase.from('played_groups').insert({
+        user_id: userId,
+        group_id: selectedGroup.id,
+      });
+    }
+
+    // Speichere die Gruppen-Info für die Anzeige
+    setRoundSubcategories(prev => {
+      const updated = [...prev];
+      updated[updated.length - 1] = { ...sub, group_number: selectedGroup.group_number };
+      return updated;
+    });
+
+    setQuestions(groupQuestions);
     setLoading(false);
     setPhase('playing');
   };
@@ -1073,7 +1123,10 @@ function DuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFin
     <div>
       <div style={{ backgroundColor: colors.light, padding: '8px 16px', fontFamily: 'Helvetica, Arial, sans-serif', textAlign: 'center' }}>
         <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>
-          {roundSubcategories[currentRound - 1]?.name.toUpperCase()} · {userChoosesThisRound ? 'DEINE WAHL' : `${(opponentName.split(' ')[1] || 'GEGNER').toUpperCase()} HAT GEWÄHLT`}
+          {roundSubcategories[currentRound - 1]?.name.toUpperCase()}
+          {roundSubcategories[currentRound - 1]?.group_number && ` · GRUPPE ${roundSubcategories[currentRound - 1].group_number}`}
+          {' · '}
+          {userChoosesThisRound ? 'DEINE WAHL' : `${(opponentName.split(' ')[1] || 'GEGNER').toUpperCase()} HAT GEWÄHLT`}
         </span>
       </div>
       <QuizRound
