@@ -205,8 +205,7 @@ function AdminImport({ onBack }: { onBack: () => void }) {
         const { data: questionsInSub } = await supabase
           .from('questions')
           .select('id')
-          .eq('subcategory_id', sub.id)
-          .order('created_at', { ascending: true });
+          .eq('subcategory_id', sub.id);
 
         if (!questionsInSub || questionsInSub.length === 0) continue;
 
