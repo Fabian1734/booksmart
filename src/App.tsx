@@ -1080,13 +1080,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
   // - Round has only challenger's sub/answers: opponent plays same sub
   // - Round has both answers: next round, check whose turn to choose
 
-  const myRoundNumber = (() => {
-    // Counts how many rounds this user has answered
-    const count = roundsData.filter((r: any) => {
-      return isChallenger ? r.challenger_answers : r.opponent_answers;
-    }).length;
-    return count + 1;
-  })();
+  
 
   const selectSubAndPlay = async (sub: any) => {
     setLoading(true);
