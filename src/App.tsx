@@ -351,6 +351,31 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
             {result}
           </div>
         )}
+
+        <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
+          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>Gemeldete Fragen</h3>
+          <ReportedQuestions />
+        </div>
+
+        <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
+          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>3er-Gruppen verwalten</h3>
+          <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>
+            Erstellt automatisch 3er-Gruppen aus allen ungruppierten Fragen. Jede Gruppe bekommt eine aufsteigende Nummer pro Subkategorie.
+          </p>
+          <button style={btnPrimary} onClick={handleCreateGroups} disabled={grouping}>
+            {grouping ? 'Erstelle Gruppen...' : 'Gruppen erstellen'}
+          </button>
+          {groupResult && (
+            <div style={{ backgroundColor: groupResult.startsWith('✅') ? '#E8F5E9' : groupResult.startsWith('ℹ️') ? '#FFF9E6' : '#FDECEA', border: `1px solid ${groupResult.startsWith('✅') ? '#4CAF50' : groupResult.startsWith('ℹ️') ? '#FFC107' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
+              {groupResult}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReportedQuestions() {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -367,9 +392,9 @@ function ReportedQuestions() {
       .from('question_reports')
       .select('*, questions(*), reported_by:profiles!question_reports_reported_by_fkey(username)')
       .order('created_at', { ascending: false });
-    
+
     if (filter === 'open') query = query.eq('status', 'open');
-    
+
     const { data } = await query;
     setReports(data || []);
     setLoading(false);
@@ -427,29 +452,6 @@ function ReportedQuestions() {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-<div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
-          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>Gemeldete Fragen</h3>
-          <ReportedQuestions />
-        </div>
-        <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
-          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>3er-Gruppen verwalten</h3>
-          <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>
-            Erstellt automatisch 3er-Gruppen aus allen ungruppierten Fragen. Jede Gruppe bekommt eine aufsteigende Nummer pro Subkategorie.
-          </p>
-          <button style={btnPrimary} onClick={handleCreateGroups} disabled={grouping}>
-            {grouping ? 'Erstelle Gruppen...' : 'Gruppen erstellen'}
-          </button>
-          {groupResult && (
-            <div style={{ backgroundColor: groupResult.startsWith('✅') ? '#E8F5E9' : groupResult.startsWith('ℹ️') ? '#FFF9E6' : '#FDECEA', border: `1px solid ${groupResult.startsWith('✅') ? '#4CAF50' : groupResult.startsWith('ℹ️') ? '#FFC107' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
-              {groupResult}
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
