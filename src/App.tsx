@@ -604,59 +604,299 @@ function UserSearch({ userId, onBack, onChallenge }: { userId: string, onBack: (
   );
 }
 
-function Highscores({ onBack }: { onBack: () => void }) {
+function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBack: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [questions, setQuestions] = useState<any[][]>([]);
+  const [reportingQuestion, setReportingQuestion] = useState<any>(null);
+  const [reportReason, setReportReason] = useState('');
+  const [reportSuccess, setReportSuccess] = useState('');
+
+  const isChallenger = duel.challenger_id === userId;
+  const opponent = isChallenger ? duel.opponent : duel.challenger;
+  const myScore = isChallenger ? (duel.challenger_score || 0) : (duel.opponent_score || 0);
+  const oppScore = isChallenger ? (duel.opponent_score || 0) : (duel.challenger_score || 0);
+  const oppName = duel.opponent_is_bot ? bots.find(b => b.level === duel.bot_level)?.name || 'Bot' : opponent?.username;
+  const roundsData = duel.rounds_data || [];
+
+  useEffect(() => {
+    loadAllQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duel.id]);
+
+  const loadAllQuestions = async () => {
+    setLoading(true);
+    const allRoundQuestions: any[][] = [];
+    
+    for (const round of roundsData) {
+      const { data: members } = await supabase
+        .from('question_group_members')
+        .select('position, questions(*)')
+        .eq('group_id', round.group_id)
+        .order('position', { ascending: true });
+      const qs = members?.map((m: any) => m.questions).filter(Boolean) || [];
+      allRoundQuestions.push(qs);
+    }
+    
+    setQuestions(allRoundQuestions);
+    setLoading(false);
+  };
+
+  const submitReport = async () => {
+    if (!reportingQuestion || !reportReason.trim()) return;
+    
+    const { error } = await supabase.from('question_reports').insert({
+      question_id: reportingQuestion.id,
+      reported_by: userId,
+      reason: reportReason.trim(),
+    });
+
+    if (error) {
+      setReportSuccess('❌ Fehler beim Senden');
+    } else {
+      setReportSuccess('✅ Frage wurde gemeldet');
+      setTimeout(() => {
+        setReportingQuestion(null);
+        setReportReason('');
+        setReportSuccess('');
+      }, 2000);
+    }
+  };
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        
+        <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h2 style={{ color: colors.text, fontSize: '20px', margin: 0 }}>vs {oppName}</h2>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.primary }}>{myScore} : {oppScore}</div>
+          </div>
+          <div style={{ fontSize: '13px', color: colors.muted }}>{duel.categories?.name}</div>
+        </div>
+
+        {roundsData.map((round: any, roundIdx: number) => {
+          const roundQuestions = questions[roundIdx] || [];
+          const myAnswers = isChallenger ? round.challenger_answers : round.opponent_answers;
+          const mySelections = isChallenger ? round.challenger_selections : round.opponent_selections;
+          const oppAnswers = isChallenger ? round.opponent_answers : round.challenger_answers;
+          const oppSelections = isChallenger ? round.opponent_selections : round.challenger_selections;
+
+          return (
+            <div key={roundIdx} style={{ marginBottom: '32px' }}>
+              <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px', letterSpacing: '1px' }}>
+                RUNDE {round.round} · {round.subcategory_name} · Gruppe {round.group_number}
+              </h3>
+              
+              {roundQuestions.map((q: any, qIdx: number) => {
+                const myCorrect = myAnswers?.[qIdx];
+                const oppCorrect = oppAnswers?.[qIdx];
+                const myAnswer = mySelections?.[qIdx];
+                const oppAnswer = oppSelections?.[qIdx];
+
+                const options = q.type === 'true_false'
+                  ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
+                  : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
+
+                return (
+                  <div key={qIdx} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '16px' }}>
+                    <div style={{ fontSize: '15px', color: colors.text, marginBottom: '12px', fontWeight: 'bold' }}>Frage {qIdx + 1}</div>
+                    <div style={{ fontSize: '14px', color: colors.text, marginBottom: '16px', lineHeight: '1.5' }}>{q.question_text}</div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                      {options.map(opt => {
+                        const isCorrect = opt.key === q.correct_answer;
+                        const isMyAnswer = opt.key === myAnswer;
+                        const isOppAnswer = opt.key === oppAnswer;
+                        
+                        let bg = 'white';
+                        let border = '1px solid #E8DFD0';
+                        if (isCorrect) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; }
+
+                        return (
+                          <div key={opt.key} style={{ backgroundColor: bg, border, padding: '10px 12px', borderRadius: '4px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>
+                              <span style={{ fontWeight: 'bold', marginRight: '8px' }}>{opt.key}.</span>
+                              {opt.label}
+                              {isCorrect && <span style={{ marginLeft: '8px', color: '#4CAF50', fontSize: '16px' }}>✓</span>}
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              {isMyAnswer && <span style={{ fontSize: '11px', backgroundColor: myCorrect ? '#E8F5E9' : '#FDECEA', padding: '2px 6px', borderRadius: '3px' }}>Du</span>}
+                              {isOppAnswer && <span style={{ fontSize: '11px', backgroundColor: oppCorrect ? '#E8F5E9' : '#FDECEA', padding: '2px 6px', borderRadius: '3px' }}>{oppName}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <button 
+                      onClick={() => setReportingQuestion(q)} 
+                      style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', border: '1px solid #E53935', color: '#E53935', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}
+                    >
+                      ⚠️ Frage melden
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {reportingQuestion && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 }}>
+          <div style={{ backgroundColor: colors.bg, borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '100%' }}>
+            <h3 style={{ fontSize: '18px', color: colors.text, marginBottom: '12px' }}>Frage melden</h3>
+            <p style={{ fontSize: '14px', color: colors.text, marginBottom: '8px', lineHeight: '1.4' }}>{reportingQuestion.question_text}</p>
+            <textarea 
+              value={reportReason} 
+              onChange={e => setReportReason(e.target.value)}
+              placeholder="Was ist das Problem mit dieser Frage?"
+              style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }}
+            />
+            {reportSuccess && <div style={{ fontSize: '14px', marginBottom: '12px', color: reportSuccess.startsWith('✅') ? '#4CAF50' : '#E53935' }}>{reportSuccess}</div>}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button style={{ ...btnPrimary, marginBottom: 0 }} onClick={submitReport}>Melden</button>
+              <button style={{ ...btnSecondary, marginBottom: 0 }} onClick={() => { setReportingQuestion(null); setReportReason(''); setReportSuccess(''); }}>Abbrechen</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) {
+  const [tab, setTab] = useState<'leaderboard' | 'myduels'>('leaderboard');
   const [scores, setScores] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+  const [myDuels, setMyDuels] = useState<any[]>([]);
+  const [selectedDuel, setSelectedDuel] = useState<any>(null);
 
   useEffect(() => {
     supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
   }, []);
 
   useEffect(() => {
-    const fetchScores = async () => {
-      setLoading(true);
-      let query = supabase.from('scores').select('*, profiles(username), categories(name)').order('points', { ascending: false }).limit(20);
-      if (selectedCategory !== 'all') query = query.eq('category_id', selectedCategory);
-      const { data } = await query;
-      setScores(data || []);
-      setLoading(false);
-    };
-    fetchScores();
-  }, [selectedCategory]);
+    if (tab === 'leaderboard') {
+      const fetchScores = async () => {
+        setLoading(true);
+        let query = supabase.from('scores').select('*, profiles(username), categories(name)').order('points', { ascending: false }).limit(20);
+        if (selectedCategory !== 'all') query = query.eq('category_id', selectedCategory);
+        const { data } = await query;
+        setScores(data || []);
+        setLoading(false);
+      };
+      fetchScores();
+    } else {
+      loadMyDuels();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, tab, userId]);
+
+  const loadMyDuels = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('duels')
+      .select(`
+        *,
+        challenger:profiles!duels_challenger_id_fkey(username),
+        opponent:profiles!duels_opponent_id_fkey(username),
+        categories(name)
+      `)
+      .or(`challenger_id.eq.${userId},opponent_id.eq.${userId}`)
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false });
+    setMyDuels(data || []);
+    setLoading(false);
+  };
 
   const medal = (i: number) => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+
+  if (selectedDuel) {
+    return <DuelDetail duel={selectedDuel} userId={userId} onBack={() => setSelectedDuel(null)} />;
+  }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
         <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>HIGHSCORES</h2>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
-          <button onClick={() => setSelectedCategory('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === 'all' ? colors.primary : colors.light, color: selectedCategory === 'all' ? '#F5F0E8' : colors.text }}>Alle</button>
-          {categories.map(cat => (
-            <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === cat.id ? colors.primary : colors.light, color: selectedCategory === cat.id ? '#F5F0E8' : colors.text }}>{cat.name}</button>
-          ))}
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>
+          {tab === 'leaderboard' ? 'HIGHSCORES' : 'MEINE DUELLE'}
+        </h2>
+        
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+          <button onClick={() => setTab('leaderboard')} style={{ padding: '10px 20px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', backgroundColor: tab === 'leaderboard' ? colors.primary : colors.light, color: tab === 'leaderboard' ? '#F5F0E8' : colors.text }}>Bestenliste</button>
+          <button onClick={() => setTab('myduels')} style={{ padding: '10px 20px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', backgroundColor: tab === 'myduels' ? colors.primary : colors.light, color: tab === 'myduels' ? '#F5F0E8' : colors.text }}>Meine Duelle</button>
         </div>
-        {loading ? <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p> : scores.length === 0 ? (
-          <p style={{ color: colors.muted, textAlign: 'center' }}>Noch keine Scores.</p>
+
+        {tab === 'myduels' ? (
+          loading ? <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p> : myDuels.length === 0 ? (
+            <p style={{ color: colors.muted, textAlign: 'center' }}>Noch keine abgeschlossenen Duelle</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {myDuels.map(d => {
+                const isChallenger = d.challenger_id === userId;
+                const opponent = isChallenger ? d.opponent : d.challenger;
+                const myScore = isChallenger ? (d.challenger_score || 0) : (d.opponent_score || 0);
+                const oppScore = isChallenger ? (d.opponent_score || 0) : (d.challenger_score || 0);
+                const won = myScore > oppScore;
+                const draw = myScore === oppScore;
+                const oppName = d.opponent_is_bot ? bots.find(b => b.level === d.bot_level)?.name || 'Bot' : opponent?.username;
+                
+                return (
+                  <div key={d.id} onClick={() => setSelectedDuel(d)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold' }}>vs {oppName}</div>
+                      <div style={{ fontSize: '16px', color: colors.text }}>{myScore} : {oppScore}</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name}</div>
+                      <div style={{ fontSize: '13px', color: won ? '#4CAF50' : draw ? colors.muted : '#E53935' }}>
+                        {won ? 'Gewonnen 🏆' : draw ? 'Unentschieden' : 'Verloren'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {scores.map((score, i) => (
-              <div key={score.id} style={{ backgroundColor: '#FDFAF5', border: `1px solid ${i === 0 ? '#DAA520' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#C9B99A'}`, padding: '14px 16px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: i < 3 ? '20px' : '14px', minWidth: '28px', textAlign: 'center', color: colors.muted }}>{medal(i)}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: colors.text, fontSize: '15px', marginBottom: '2px' }}>{score.profiles?.username || 'Anonym'}</div>
-                  <div style={{ color: colors.muted, fontSize: '12px' }}>{score.categories?.name}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ color: colors.primary, fontSize: '18px', fontWeight: 'bold' }}>{score.points}</div>
-                  <div style={{ color: colors.muted, fontSize: '12px' }}>{score.correct_count}/{score.total_questions} richtig</div>
-                </div>
+          <>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
+              <button onClick={() => setSelectedCategory('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === 'all' ? colors.primary : colors.light, color: selectedCategory === 'all' ? '#F5F0E8' : colors.text }}>Alle</button>
+              {categories.map(cat => (
+                <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === cat.id ? colors.primary : colors.light, color: selectedCategory === cat.id ? '#F5F0E8' : colors.text }}>{cat.name}</button>
+              ))}
+            </div>
+            {loading ? <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p> : scores.length === 0 ? (
+              <p style={{ color: colors.muted, textAlign: 'center' }}>Noch keine Scores.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {scores.map((score, i) => (
+                  <div key={score.id} style={{ backgroundColor: '#FDFAF5', border: `1px solid ${i === 0 ? '#DAA520' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#C9B99A'}`, padding: '14px 16px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: i < 3 ? '20px' : '14px', minWidth: '28px', textAlign: 'center', color: colors.muted }}>{medal(i)}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: colors.text, fontSize: '15px', marginBottom: '2px' }}>{score.profiles?.username || 'Anonym'}</div>
+                      <div style={{ color: colors.muted, fontSize: '12px' }}>{score.categories?.name}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ color: colors.primary, fontSize: '18px', fontWeight: 'bold' }}>{score.points}</div>
+                      <div style={{ color: colors.muted, fontSize: '12px' }}>{score.correct_count}/{score.total_questions} richtig</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1644,7 +1884,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
 
   if (view === 'botDuel' && activeDuel) return <BotDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('home'); loadActiveDuelsCount(); }} />;
   if (view === 'userDuel' && activeDuel) return <UserDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('userDuelsList'); loadActiveDuelsCount(); }} />;
-  if (view === 'highscores') return <Highscores onBack={() => setView('home')} />;
+  if (view === 'highscores') return <Highscores onBack={() => setView('home')} userId={user.id} />;
   if (view === 'admin') return <AdminImport onBack={() => setView('home')} />;
   if (view === 'notifications') return <Notifications userId={user.id} onBack={() => { setView('home'); loadUnreadCount(); }} />;
   if (view === 'userSearch') return <UserSearch userId={user.id} onBack={() => setView('home')} onChallenge={(opp) => { setChallengingUser(opp); setView('userDuelCategory'); }} />;
