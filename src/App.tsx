@@ -351,7 +351,90 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
             {result}
           </div>
         )}
+function ReportedQuestions() {
+  const [reports, setReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'open' | 'all'>('open');
 
+  useEffect(() => {
+    loadReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
+
+  const loadReports = async () => {
+    setLoading(true);
+    let query = supabase
+      .from('question_reports')
+      .select('*, questions(*), reported_by:profiles!question_reports_reported_by_fkey(username)')
+      .order('created_at', { ascending: false });
+    
+    if (filter === 'open') query = query.eq('status', 'open');
+    
+    const { data } = await query;
+    setReports(data || []);
+    setLoading(false);
+  };
+
+  const updateStatus = async (reportId: string, newStatus: string) => {
+    await supabase.from('question_reports').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', reportId);
+    loadReports();
+  };
+
+  const deleteQuestion = async (questionId: string) => {
+    if (!window.confirm('Frage wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
+    await supabase.from('questions').delete().eq('id', questionId);
+    loadReports();
+  };
+
+  if (loading) return <p style={{ color: colors.muted, fontSize: '13px' }}>Lade Reports...</p>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button onClick={() => setFilter('open')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: filter === 'open' ? colors.primary : colors.light, color: filter === 'open' ? '#F5F0E8' : colors.text }}>Offen ({reports.filter(r => r.status === 'open').length})</button>
+        <button onClick={() => setFilter('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: filter === 'all' ? colors.primary : colors.light, color: filter === 'all' ? '#F5F0E8' : colors.text }}>Alle</button>
+      </div>
+
+      {reports.length === 0 ? (
+        <p style={{ color: colors.muted, fontSize: '13px' }}>Keine Reports</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {reports.map(report => (
+            <div key={report.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px' }}>
+              <div style={{ fontSize: '13px', color: colors.muted, marginBottom: '8px' }}>
+                Gemeldet von {report.reported_by?.username} · {new Date(report.created_at).toLocaleDateString('de-CH')}
+              </div>
+              <div style={{ fontSize: '14px', color: colors.text, marginBottom: '8px', fontWeight: 'bold' }}>
+                {report.questions?.question_text}
+              </div>
+              <div style={{ fontSize: '13px', color: colors.text, marginBottom: '12px', padding: '12px', backgroundColor: '#FFF9E6', borderRadius: '4px' }}>
+                💬 {report.reason}
+              </div>
+              <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '12px' }}>
+                Status: <span style={{ fontWeight: 'bold', color: report.status === 'open' ? '#E53935' : report.status === 'resolved' ? '#4CAF50' : colors.muted }}>{report.status}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {report.status === 'open' && (
+                  <>
+                    <button onClick={() => updateStatus(report.id, 'in_progress')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>In Bearbeitung</button>
+                    <button onClick={() => updateStatus(report.id, 'resolved')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Erledigt</button>
+                    <button onClick={() => updateStatus(report.id, 'dismissed')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.muted, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Ablehnen</button>
+                  </>
+                )}
+                <button onClick={() => deleteQuestion(report.questions.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#E53935', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Frage löschen</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+<div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
+          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>Gemeldete Fragen</h3>
+          <ReportedQuestions />
+        </div>
         <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
           <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>3er-Gruppen verwalten</h3>
           <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>
