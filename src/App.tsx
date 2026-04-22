@@ -863,166 +863,6 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [duel.id]);
 
-  function MapQuiz({ userId, onBack }: { userId: string, onBack: () => void }) {
-    const [locations, setLocations] = useState<any[]>([]);
-    const [currentRound, setCurrentRound] = useState(0);
-    const [clickedPoint, setClickedPoint] = useState<{ x: number, y: number } | null>(null);
-    const [showResult, setShowResult] = useState(false);
-    const [distance, setDistance] = useState(0);
-    const [points, setPoints] = useState(0);
-    const [totalPoints, setTotalPoints] = useState(0);
-    const [gameOver, setGameOver] = useState(false);
-    const [loading, setLoading] = useState(true);
-  
-    const TOTAL_ROUNDS = 10;
-    const svgWidth = 400;
-    const svgHeight = 500;
-  
-    // Schweiz Bounding Box (approximiert)
-    const swissBox = {
-      minLat: 45.818,
-      maxLat: 47.808,
-      minLon: 5.956,
-      maxLon: 10.492
-    };
-  
-    useEffect(() => {
-      loadLocations();
-    }, []);
-  
-    const loadLocations = async () => {
-      const { data } = await supabase.from('map_locations').select('*');
-      if (data) {
-        // Shuffle und nimm 10
-        const shuffled = data.sort(() => Math.random() - 0.5).slice(0, TOTAL_ROUNDS);
-        setLocations(shuffled);
-      }
-      setLoading(false);
-    };
-  
-    const latLonToSVG = (lat: number, lon: number) => {
-      const x = ((lon - swissBox.minLon) / (swissBox.maxLon - swissBox.minLon)) * svgWidth;
-      const y = svgHeight - ((lat - swissBox.minLat) / (swissBox.maxLat - swissBox.minLat)) * svgHeight;
-      return { x, y };
-    };
-  
-    const calculateDistance = (x1: number, y1: number, x2: number, y2: number) => {
-      return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-    };
-  
-    const handleMapClick = (e: React.MouseEvent<SVGSVGElement>) => {
-      if (showResult) return;
-      
-      const svg = e.currentTarget;
-      const rect = svg.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * svgWidth;
-      const y = ((e.clientY - rect.top) / rect.height) * svgHeight;
-      
-      setClickedPoint({ x, y });
-  
-      const currentLocation = locations[currentRound];
-      const correctPos = latLonToSVG(currentLocation.latitude, currentLocation.longitude);
-      const dist = calculateDistance(x, y, correctPos.x, correctPos.y);
-      
-      // Punkte: max 100 bei perfekt, 0 ab 100px Distanz
-      const earnedPoints = Math.max(0, Math.floor(100 - dist));
-      
-      setDistance(Math.round(dist));
-      setPoints(earnedPoints);
-      setTotalPoints(prev => prev + earnedPoints);
-      setShowResult(true);
-  
-      setTimeout(() => {
-        if (currentRound + 1 >= TOTAL_ROUNDS) {
-          setGameOver(true);
-        } else {
-          setCurrentRound(prev => prev + 1);
-          setClickedPoint(null);
-          setShowResult(false);
-        }
-      }, 3000);
-    };
-  
-    if (loading) return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
-      </div>
-    );
-  
-    if (gameOver) {
-      return (
-        <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-          <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
-            <div style={{ fontSize: '52px', marginBottom: '16px' }}>🗺️</div>
-            <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>QUIZ BEENDET</h2>
-            <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>10 ORTE PLATZIERT</p>
-            <div style={{ backgroundColor: '#FDFAF5', border: '2px solid ' + colors.primary, padding: '32px 20px', borderRadius: '4px', marginBottom: '24px' }}>
-              <div style={{ fontSize: '48px', fontWeight: 'bold', color: colors.primary, marginBottom: '8px' }}>{totalPoints}</div>
-              <div style={{ fontSize: '14px', color: colors.muted }}>von 1000 Punkten</div>
-            </div>
-            <button style={btnPrimary} onClick={onBack}>Zurück zum Dashboard</button>
-          </div>
-        </div>
-      );
-    }
-  
-    const currentLocation = locations[currentRound];
-    const correctPos = latLonToSVG(currentLocation.latitude, currentLocation.longitude);
-  
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
-        <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-          <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>RUNDE {currentRound + 1} VON {TOTAL_ROUNDS}</span>
-            <span style={{ color: colors.primary, fontSize: '16px', fontWeight: 'bold' }}>{totalPoints} Punkte</span>
-          </div>
-  
-          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px', textAlign: 'center' }}>
-            <h2 style={{ fontSize: 'clamp(18px, 4vw, 24px)', color: colors.text, marginBottom: '8px' }}>Wo liegt {currentLocation.name}?</h2>
-            <p style={{ fontSize: '13px', color: colors.muted }}>
-              {currentLocation.type === 'city' ? '📍 Stadt' : currentLocation.type === 'mountain' ? '⛰️ Berg' : '🌊 See'}
-            </p>
-          </div>
-  
-          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '16px' }}>
-            <svg 
-              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-              style={{ width: '100%', height: 'auto', cursor: showResult ? 'default' : 'crosshair', backgroundColor: '#E8F4F8', borderRadius: '4px' }}
-              onClick={handleMapClick}
-            >
-              {/* Schweiz Umriss (vereinfacht) */}
-              <path d="M50,250 L100,200 L150,180 L200,170 L250,175 L300,200 L350,250 L380,300 L370,350 L340,400 L300,430 L250,450 L200,460 L150,450 L100,420 L60,380 L40,330 Z" 
-                fill="#C8E6C9" stroke="#2E7D32" strokeWidth="2" />
-              
-              {/* Geklickter Punkt */}
-              {clickedPoint && (
-                <circle cx={clickedPoint.x} cy={clickedPoint.y} r="8" fill="#E53935" stroke="white" strokeWidth="2" />
-              )}
-              
-              {/* Korrekter Punkt (nur nach Klick) */}
-              {showResult && (
-                <>
-                  <circle cx={correctPos.x} cy={correctPos.y} r="8" fill="#4CAF50" stroke="white" strokeWidth="2" />
-                  <line x1={clickedPoint!.x} y1={clickedPoint!.y} x2={correctPos.x} y2={correctPos.y} stroke="#666" strokeWidth="1" strokeDasharray="4" />
-                </>
-              )}
-            </svg>
-          </div>
-  
-          {showResult && (
-            <div style={{ backgroundColor: points > 70 ? '#E8F5E9' : points > 40 ? '#FFF9E6' : '#FDECEA', border: `1px solid ${points > 70 ? '#4CAF50' : points > 40 ? '#FFC107' : '#E53935'}`, borderRadius: '4px', padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>{points > 70 ? '🎯' : points > 40 ? '👍' : '😅'}</div>
-              <div style={{ fontSize: '18px', color: colors.text, marginBottom: '4px', fontWeight: 'bold' }}>+{points} Punkte</div>
-              <div style={{ fontSize: '13px', color: colors.muted }}>Distanz: {distance} Pixel</div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
 
 
   const loadAllQuestions = async () => {
@@ -1272,10 +1112,27 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
             </div>
           )
         ) : (
-          <>
-            
-  
-
+          loading ? <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {scores.map((s, i) => (
+                <div key={s.id || `${s.user_id}-${i}`} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ color: colors.muted, fontSize: '14px', minWidth: '28px' }}>{medal(i)}</span>
+                    <div>
+                      <div style={{ color: colors.text, fontSize: '15px', fontWeight: 'bold' }}>{s.profiles?.username || 'Unbekannt'}</div>
+                      <div style={{ color: colors.muted, fontSize: '12px' }}>{s.categories?.name || 'Kategorie'}</div>
+                    </div>
+                  </div>
+                  <div style={{ color: colors.primary, fontSize: '18px', fontWeight: 'bold' }}>{s.points || 0}</div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
 
 // BOT-DUELL
 function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
