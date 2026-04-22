@@ -141,6 +141,7 @@ function parseCSV(text: string): CSVQuestion[] {
 }
 
 // EXCEL EXPORT/IMPORT KOMPONENTE
+// EXCEL EXPORT/IMPORT KOMPONENTE
 function ExcelExportImport() {
   const [categories, setCategories] = useState<any[]>([]);
   const [subcategories, setSubcategories] = useState<any[]>([]);
@@ -188,6 +189,232 @@ function ExcelExportImport() {
         return;
       }
 
+      const exportData = questions.map(q => ({
+        question_id: q.id,
+        book_id: q.book_id,
+        book_title: q.books?.title || '',
+        question_text: q.question_text,
+        type: q.type,
+        correct_answer: q.correct_answer,
+        option_a: q.option_a || '',
+        option_b: q.option_b || '',
+        option_c: q.option_c || '',
+        option_d: q.option_d || '',
+        difficulty: q.difficulty,
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Fragen');
+
+      const subcatName = subcategories.find(s => s.id === selectedSubcategory)?.name || 'fragen';
+      const fileName = `${subcatName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+      setMessage({ type: 'success', text: `✅ ${questions.length} Fragen exportiert: ${fileName}` });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: `❌ Fehler: ${err.message}` });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!selectedSubcategory) {
+      setMessage({ type: 'error', text: 'Bitte zuerst Kategorie und Subkategorie auswählen!' });
+      e.target.value = '';
+      return;
+    }
+
+    setImporting(true);
+    setMessage(null);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+      if (rows.length === 0) throw new Error('Excel-Datei ist leer');
+
+      // Validate book_ids
+      const bookIds = Array.from(new Set(rows.map(r => r.book_id).filter(Boolean)));
+      const { data: existingBooks } = await supabase.from('books').select('id').in('id', bookIds);
+      const validBookIds = new Set(existingBooks?.map(b => b.id) || []);
+
+      // Get existing question IDs to verify updates
+      const questionIdsInExcel = rows.map(r => r.question_id).filter(Boolean);
+      const { data: existingQuestions } = await supabase
+        .from('questions')
+        .select('id')
+        .in('id', questionIdsInExcel);
+      const validQuestionIds = new Set(existingQuestions?.map(q => q.id) || []);
+
+      const toInsert: any[] = [];
+      const toUpdate: any[] = [];
+      const errors: string[] = [];
+
+      rows.forEach((row, idx) => {
+        if (!row.book_id || !validBookIds.has(row.book_id)) {
+          errors.push(`Zeile ${idx + 2}: book_id "${row.book_id}" existiert nicht`);
+          return;
+        }
+        if (!row.question_text) {
+          errors.push(`Zeile ${idx + 2}: question_text fehlt`);
+          return;
+        }
+        if (!row.correct_answer) {
+          errors.push(`Zeile ${idx + 2}: correct_answer fehlt`);
+          return;
+        }
+
+        const questionData = {
+          category_id: selectedCategory,
+          subcategory_id: selectedSubcategory,
+          book_id: row.book_id,
+          question_text: row.question_text,
+          type: row.type || 'multiple_choice',
+          correct_answer: String(row.correct_answer),
+          option_a: row.option_a || null,
+          option_b: row.option_b || null,
+          option_c: row.option_c || null,
+          option_d: row.option_d || null,
+          difficulty: parseInt(row.difficulty) || 2,
+        };
+
+        // If question_id exists AND is in DB → UPDATE
+        if (row.question_id && validQuestionIds.has(row.question_id)) {
+          toUpdate.push({ id: row.question_id, ...questionData });
+        } else if (row.question_id && !validQuestionIds.has(row.question_id)) {
+          errors.push(`Zeile ${idx + 2}: question_id "${row.question_id}" existiert nicht in der DB`);
+        } else {
+          // No question_id → INSERT new
+          toInsert.push(questionData);
+        }
+      });
+
+      let updateCount = 0;
+      let insertCount = 0;
+
+      // Updates
+      for (const q of toUpdate) {
+        const { id, ...updateData } = q;
+        const { error } = await supabase.from('questions').update(updateData).eq('id', id);
+        if (error) {
+          errors.push(`Update fehlgeschlagen für ID ${id}: ${error.message}`);
+        } else {
+          updateCount++;
+        }
+      }
+
+      // Inserts
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from('questions').insert(toInsert);
+        if (error) {
+          errors.push(`Insert fehlgeschlagen: ${error.message}`);
+        } else {
+          insertCount = toInsert.length;
+        }
+      }
+
+      let msg = '';
+      if (updateCount > 0) msg += `✅ ${updateCount} Fragen aktualisiert\n`;
+      if (insertCount > 0) msg += `✅ ${insertCount} neue Fragen hinzugefügt\n`;
+      if (errors.length > 0) msg += `⚠️ ${errors.length} Fehler:\n${errors.slice(0, 5).join('\n')}`;
+      if (!msg) msg = 'Keine Änderungen';
+
+      setMessage({ type: errors.length > 0 && updateCount === 0 && insertCount === 0 ? 'error' : 'success', text: msg });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: `❌ Fehler: ${err.message}` });
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
+      <h3 style={{ fontSize: '18px', color: colors.text, marginBottom: '16px' }}>📊 Excel Export / Import</h3>
+      <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '20px' }}>
+        Exportiere Fragen einer Subkategorie als Excel, bearbeite sie und lade sie wieder hoch.
+      </p>
+
+      <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '20px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Kategorie</label>
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          style={{ ...inputStyle, marginBottom: '16px' }}
+        >
+          <option value="">— Kategorie wählen —</option>
+          {categories.map(cat => (
+            <option key={cat.id} value={cat.id}>{cat.name}</option>
+          ))}
+        </select>
+
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Subkategorie</label>
+        <select
+          value={selectedSubcategory}
+          onChange={(e) => setSelectedSubcategory(e.target.value)}
+          disabled={!selectedCategory}
+          style={{ ...inputStyle, marginBottom: '0', opacity: selectedCategory ? 1 : 0.5 }}
+        >
+          <option value="">— Subkategorie wählen —</option>
+          {subcategories.map(sub => (
+            <option key={sub.id} value={sub.id}>{sub.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: 'flex', gap: '12px', flexDirection: 'column', marginBottom: '20px' }}>
+        <button
+          style={{ ...btnPrimary, opacity: !selectedSubcategory || exporting ? 0.5 : 1 }}
+          onClick={handleExport}
+          disabled={!selectedSubcategory || exporting}
+        >
+          {exporting ? 'Exportiere...' : '📥 Excel exportieren'}
+        </button>
+
+        <label style={{ ...btnSecondary, display: 'block', textAlign: 'center', opacity: !selectedSubcategory || importing ? 0.5 : 1, cursor: !selectedSubcategory || importing ? 'not-allowed' : 'pointer' }}>
+          {importing ? 'Importiere...' : '📤 Excel importieren'}
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleImport}
+            disabled={!selectedSubcategory || importing}
+            style={{ display: 'none' }}
+          />
+        </label>
+      </div>
+
+      {message && (
+        <div style={{
+          backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FDECEA',
+          border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#E53935'}`,
+          borderRadius: '4px',
+          padding: '16px',
+          fontSize: '14px',
+          color: colors.text,
+          whiteSpace: 'pre-line',
+        }}>
+          {message.text}
+        </div>
+      )}
+
+      <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#FFF9E6', borderRadius: '4px', fontSize: '12px', color: colors.muted, lineHeight: '1.6' }}>
+        <strong>💡 Hinweise:</strong><br />
+        • Excel-Spalten: <strong>question_id</strong>, book_id, book_title, question_text, type, correct_answer, option_a-d, difficulty<br />
+        • <strong>question_id leer</strong> = Neue Frage wird hinzugefügt<br />
+        • <strong>question_id vorhanden</strong> = Bestehende Frage wird aktualisiert<br />
+        • <strong>book_id</strong> muss eine UUID eines existierenden Buchs sein<br />
+        • Nach neuen Fragen: Gruppen neu erstellen!
+      </div>
+    </div>
+  );
+}
       const exportData = questions.map(q => ({
         book_id: q.book_id,
         book_title: q.books?.title || '',
