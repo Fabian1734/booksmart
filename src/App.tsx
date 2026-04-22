@@ -2134,8 +2134,9 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   if (view === 'admin') return <AdminImport onBack={() => setView('home')} />;
   if (view === 'notifications') return <Notifications userId={user.id} onBack={() => { setView('home'); loadUnreadCount(); }} />;
   if (view === 'userSearch') return <UserSearch userId={user.id} onBack={() => setView('home')} onChallenge={(opp) => { setChallengingUser(opp); setView('userDuelCategory'); }} />;
-  if (view === 'mapQuiz') return <MapQuiz userId={user.id} onBack={() => setView('home')} />;  if (view === 'userDuelsList') return <DuelsList userId={user.id} onOpenDuel={(duel) => { setActiveDuel(duel); setView('userDuel'); }} onBack={() => setView('home')} onNewUserDuel={() => setView('userSearch')} />;
-
+  if (view === 'mapQuiz') return <MapQuiz userId={user.id} onBack={() => setView('home')} />;
+  if (view === 'userDuelCategory' && challengingUser) return <UserDuelCategorySelect opponent={challengingUser} userId={user.id} onBack={() => setView('userSearch')} onStart={(duel) => { setChallengingUser(null); setActiveDuel(duel); setView('userDuel'); }} />;
+  if (view === 'userDuelsList')
   if (view === 'selectOpponentBot') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
