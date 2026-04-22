@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
+import * as XLSX from 'xlsx';
 
 const colors = {
   bg: '#F5F0E8',
@@ -77,17 +78,14 @@ async function findBestGroup(subcategoryId: string, userIds: string[]): Promise<
     .select('group_id, user_id')
     .in('user_id', userIds);
 
-  // Zähle wie oft jede Gruppe von den angegebenen Usern gespielt wurde
   const playCount: Record<string, number> = {};
   playedData?.forEach(p => {
     playCount[p.group_id] = (playCount[p.group_id] || 0) + 1;
   });
 
-  // Finde tiefste Gruppe, die keiner der User gespielt hat
   const neverPlayed = allGroups.find(g => !playCount[g.id]);
   if (neverPlayed) return neverPlayed;
 
-  // Alle gespielt -> nimm tiefste
   return allGroups[0];
 }
 
@@ -140,6 +138,239 @@ function parseCSV(text: string): CSVQuestion[] {
     questions.push(q as CSVQuestion);
   }
   return questions;
+}
+
+// EXCEL EXPORT/IMPORT KOMPONENTE
+function ExcelExportImport() {
+  const [categories, setCategories] = useState<any[]>([]);
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>('');
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  useEffect(() => {
+    supabase.from('categories').select('*').order('name').then(({ data }) => setCategories(data || []));
+  }, []);
+
+  useEffect(() => {
+    if (selectedCategory) {
+      supabase.from('subcategories').select('*').eq('category_id', selectedCategory).order('name').then(({ data }) => {
+        setSubcategories(data || []);
+        setSelectedSubcategory('');
+      });
+    } else {
+      setSubcategories([]);
+      setSelectedSubcategory('');
+    }
+  }, [selectedCategory]);
+
+  const handleExport = async () => {
+    if (!selectedSubcategory) {
+      setMessage({ type: 'error', text: 'Bitte Subkategorie auswählen' });
+      return;
+    }
+
+    setExporting(true);
+    setMessage(null);
+
+    try {
+      const { data: questions, error } = await supabase
+        .from('questions')
+        .select('*, books(title)')
+        .eq('subcategory_id', selectedSubcategory);
+
+      if (error) throw error;
+      if (!questions || questions.length === 0) {
+        setMessage({ type: 'error', text: 'Keine Fragen in dieser Subkategorie gefunden' });
+        setExporting(false);
+        return;
+      }
+
+      const exportData = questions.map(q => ({
+        book_id: q.book_id,
+        book_title: q.books?.title || '',
+        question_text: q.question_text,
+        type: q.type,
+        correct_answer: q.correct_answer,
+        option_a: q.option_a || '',
+        option_b: q.option_b || '',
+        option_c: q.option_c || '',
+        option_d: q.option_d || '',
+        difficulty: q.difficulty,
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Fragen');
+
+      const subcatName = subcategories.find(s => s.id === selectedSubcategory)?.name || 'fragen';
+      const fileName = `${subcatName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+      setMessage({ type: 'success', text: `✅ ${questions.length} Fragen exportiert: ${fileName}` });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: `❌ Fehler: ${err.message}` });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!selectedSubcategory) {
+      setMessage({ type: 'error', text: 'Bitte zuerst Kategorie und Subkategorie auswählen!' });
+      e.target.value = '';
+      return;
+    }
+
+    setImporting(true);
+    setMessage(null);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+      if (rows.length === 0) throw new Error('Excel-Datei ist leer');
+
+      // Validate book_ids
+      const bookIds = Array.from(new Set(rows.map(r => r.book_id).filter(Boolean)));
+      const { data: existingBooks } = await supabase.from('books').select('id').in('id', bookIds);
+      const validBookIds = new Set(existingBooks?.map(b => b.id) || []);
+
+      const toInsert: any[] = [];
+      const errors: string[] = [];
+
+      rows.forEach((row, idx) => {
+        if (!row.book_id || !validBookIds.has(row.book_id)) {
+          errors.push(`Zeile ${idx + 2}: book_id "${row.book_id}" existiert nicht`);
+          return;
+        }
+        if (!row.question_text) {
+          errors.push(`Zeile ${idx + 2}: question_text fehlt`);
+          return;
+        }
+        if (!row.correct_answer) {
+          errors.push(`Zeile ${idx + 2}: correct_answer fehlt`);
+          return;
+        }
+
+        toInsert.push({
+          category_id: selectedCategory,
+          subcategory_id: selectedSubcategory,
+          book_id: row.book_id,
+          question_text: row.question_text,
+          type: row.type || 'multiple_choice',
+          correct_answer: String(row.correct_answer),
+          option_a: row.option_a || null,
+          option_b: row.option_b || null,
+          option_c: row.option_c || null,
+          option_d: row.option_d || null,
+          difficulty: parseInt(row.difficulty) || 2,
+        });
+      });
+
+      if (toInsert.length === 0) {
+        throw new Error('Keine validen Fragen gefunden:\n' + errors.slice(0, 5).join('\n'));
+      }
+
+      const { error } = await supabase.from('questions').insert(toInsert);
+      if (error) throw error;
+
+      let msg = `✅ ${toInsert.length} Fragen importiert`;
+      if (errors.length > 0) msg += `\n⚠️ ${errors.length} Zeilen übersprungen`;
+      setMessage({ type: 'success', text: msg });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: `❌ Fehler: ${err.message}` });
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
+      <h3 style={{ fontSize: '18px', color: colors.text, marginBottom: '16px' }}>📊 Excel Export / Import</h3>
+      <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '20px' }}>
+        Exportiere Fragen einer Subkategorie als Excel, bearbeite sie und lade sie wieder hoch.
+      </p>
+
+      <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '20px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Kategorie</label>
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          style={{ ...inputStyle, marginBottom: '16px' }}
+        >
+          <option value="">— Kategorie wählen —</option>
+          {categories.map(cat => (
+            <option key={cat.id} value={cat.id}>{cat.name}</option>
+          ))}
+        </select>
+
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Subkategorie</label>
+        <select
+          value={selectedSubcategory}
+          onChange={(e) => setSelectedSubcategory(e.target.value)}
+          disabled={!selectedCategory}
+          style={{ ...inputStyle, marginBottom: '0', opacity: selectedCategory ? 1 : 0.5 }}
+        >
+          <option value="">— Subkategorie wählen —</option>
+          {subcategories.map(sub => (
+            <option key={sub.id} value={sub.id}>{sub.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: 'flex', gap: '12px', flexDirection: 'column', marginBottom: '20px' }}>
+        <button
+          style={{ ...btnPrimary, opacity: !selectedSubcategory || exporting ? 0.5 : 1 }}
+          onClick={handleExport}
+          disabled={!selectedSubcategory || exporting}
+        >
+          {exporting ? 'Exportiere...' : '📥 Excel exportieren'}
+        </button>
+
+        <label style={{ ...btnSecondary, display: 'block', textAlign: 'center', opacity: !selectedSubcategory || importing ? 0.5 : 1, cursor: !selectedSubcategory || importing ? 'not-allowed' : 'pointer' }}>
+          {importing ? 'Importiere...' : '📤 Excel importieren'}
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleImport}
+            disabled={!selectedSubcategory || importing}
+            style={{ display: 'none' }}
+          />
+        </label>
+      </div>
+
+      {message && (
+        <div style={{
+          backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FDECEA',
+          border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#E53935'}`,
+          borderRadius: '4px',
+          padding: '16px',
+          fontSize: '14px',
+          color: colors.text,
+          whiteSpace: 'pre-line',
+        }}>
+          {message.text}
+        </div>
+      )}
+
+      <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#FFF9E6', borderRadius: '4px', fontSize: '12px', color: colors.muted, lineHeight: '1.6' }}>
+        <strong>💡 Hinweise:</strong><br />
+        • Excel-Spalten: book_id, book_title, question_text, type, correct_answer, option_a-d, difficulty<br />
+        • <strong>book_id</strong> muss eine UUID eines existierenden Buchs sein (book_title ist nur zur Anzeige)<br />
+        • Beim Import werden Fragen NEU eingefügt (nicht überschrieben)<br />
+        • Nach dem Import: Gruppen neu erstellen!
+      </div>
+    </div>
+  );
 }
 
 function AdminImport({ onBack }: { onBack: () => void }) {
@@ -351,6 +582,9 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
             {result}
           </div>
         )}
+
+        {/* NEUE EXCEL EXPORT/IMPORT KOMPONENTE */}
+        <ExcelExportImport />
 
         <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
           <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>Gemeldete Fragen</h3>
@@ -988,7 +1222,6 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
   );
 }
 
-// QUIZ ROUND - für einzelne Runde (sowohl Bot als auch User Duell)
 function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }: {
   questions: any[], roundNumber: number, totalRounds: number, bot: any | null,
   onRoundComplete: (userAnswers: boolean[], botAnswers: boolean[] | null, selectedAnswers: string[]) => void
@@ -1120,7 +1353,6 @@ function IntermediateScore({ myTotal, botTotal, roundsPlayed, onContinue }: { my
   );
 }
 
-// BOT-DUELL
 function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1184,7 +1416,6 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
 
     const groupQuestions = members?.map((m: any) => m.questions).filter(Boolean) || [];
 
-    // Check if already played
     const { data: alreadyPlayed } = await supabase.from('played_groups').select('id').eq('user_id', userId).eq('group_id', selectedGroup.id).maybeSingle();
     if (!alreadyPlayed) {
       await supabase.from('played_groups').insert({ user_id: userId, group_id: selectedGroup.id });
@@ -1349,7 +1580,6 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   );
 }
 
-// USER-DUELL (asynchron)
 function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<'overview' | 'selectSub' | 'playing' | 'waiting' | 'done'>('overview');
@@ -1378,7 +1608,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
       setAvailableSubs(subsWithCounts);
       setLoading(false);
 
-      // Determine phase based on duel state
       determineNextPhase(roundsData);
     };
     loadInit();
@@ -1386,26 +1615,16 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
   }, [duel.id]);
 
   const determineNextPhase = (rounds: any[]) => {
-    // Check if duel is complete
     if (rounds.length === TOTAL_ROUNDS && rounds[TOTAL_ROUNDS - 1].challenger_answers && rounds[TOTAL_ROUNDS - 1].opponent_answers) {
       setPhase('done');
       return;
     }
-    // Check current state
     if (duelData.current_turn_user_id !== userId) {
       setPhase('waiting');
       return;
     }
     setPhase('overview');
   };
-
-  // Round is "my turn" if current_turn_user_id === userId
-  // Possible actions based on state:
-  // - No rounds yet: challenger must choose sub (round 1)
-  // - Round has only challenger's sub/answers: opponent plays same sub
-  // - Round has both answers: next round, check whose turn to choose
-
-  
 
   const selectSubAndPlay = async (sub: any) => {
     setLoading(true);
@@ -1420,7 +1639,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     let roundData: any;
 
     if (isNewRound) {
-      // New round - find best group for both users
       selectedGroup = await findBestGroup(sub.id, [userId, opponentId]);
       if (!selectedGroup) {
         setLoading(false);
@@ -1435,13 +1653,11 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
         chosen_by: userId,
       };
     } else {
-      // Playing existing round (same sub/group as opponent)
       const existingRound = roundsData[currentRound - 1];
       selectedGroup = { id: existingRound.group_id, group_number: existingRound.group_number };
       roundData = existingRound;
     }
 
-    // Load questions for this group
     const { data: members } = await supabase
       .from('question_group_members')
       .select('position, questions(*)')
@@ -1449,7 +1665,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
       .order('position', { ascending: true });
     const groupQuestions = members?.map((m: any) => m.questions).filter(Boolean) || [];
 
-    // Mark as played
     const { data: alreadyPlayed } = await supabase.from('played_groups').select('id').eq('user_id', userId).eq('group_id', selectedGroup.id).maybeSingle();
     if (!alreadyPlayed) {
       await supabase.from('played_groups').insert({ user_id: userId, group_id: selectedGroup.id });
@@ -1490,14 +1705,12 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     const roundIdx = newRoundsData.findIndex((r: any) => r.round === currentRound);
 
     if (roundIdx === -1) {
-      // New round
       newRoundsData.push({
         ...currentRoundInfo,
         [isChallenger ? 'challenger_answers' : 'opponent_answers']: userAnswers,
         [isChallenger ? 'challenger_selections' : 'opponent_selections']: selectedAnswers,
       });
     } else {
-      // Playing existing round
       newRoundsData[roundIdx] = {
         ...newRoundsData[roundIdx],
         [isChallenger ? 'challenger_answers' : 'opponent_answers']: userAnswers,
@@ -1505,7 +1718,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
       };
     }
 
-    // Determine next turn
     const lastRound = newRoundsData[newRoundsData.length - 1];
     const bothAnswered = lastRound.challenger_answers && lastRound.opponent_answers;
     
@@ -1515,14 +1727,11 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     if (newRoundsData.length === TOTAL_ROUNDS && bothAnswered) {
       newStatus = 'completed';
     } else if (bothAnswered) {
-      // Round complete, next round - the user who didn't choose this round chooses next
       newTurnUserId = lastRound.chosen_by === userId ? opponentId : userId;
     } else {
-      // Partner must now play the same round
       newTurnUserId = opponentId;
     }
 
-    // Calculate scores
     const challengerScore = newRoundsData.reduce((sum: number, r: any) => sum + (r.challenger_answers?.filter(Boolean).length || 0), 0);
     const opponentScore = newRoundsData.reduce((sum: number, r: any) => sum + (r.opponent_answers?.filter(Boolean).length || 0), 0);
 
@@ -1539,7 +1748,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
       console.error('Failed to update duel:', error);
     }
 
-    // Send notification to opponent
     if (newStatus !== 'completed' && newTurnUserId === opponentId) {
       const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
       await supabase.from('notifications').insert({
@@ -1560,7 +1768,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
       });
     }
 
-    // Update local state
     setDuelData({
       ...duelData,
       rounds_data: newRoundsData,
@@ -1577,9 +1784,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     }
   };
 
-  // Whose turn to choose subcategory?
-  // Round 1 & 3: challenger chooses
-  // Round 2 & 4: opponent chooses
   const whoChoosesRound = (round: number) => round === 1 || round === 3 ? duel.challenger_id : duel.opponent_id;
 
   if (loading) return (
@@ -1676,13 +1880,11 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     );
   }
 
-  // Phase: overview - determine if user needs to choose or play existing
   const currentRound = roundsData.length;
   const lastRound = currentRound > 0 ? roundsData[currentRound - 1] : null;
   const needsToPlayExistingRound = lastRound && !(isChallenger ? lastRound.challenger_answers : lastRound.opponent_answers);
 
   if (needsToPlayExistingRound) {
-    // Play the round that opponent just chose
     return (
       <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
         <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
@@ -1696,7 +1898,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     );
   }
 
-  // User must choose subcategory
   const nextRound = currentRound + 1;
   const userShouldChoose = whoChoosesRound(nextRound) === userId;
 
@@ -1725,7 +1926,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
   );
 }
 
-// Duell-Übersicht
 function DuelsList({ userId, onOpenDuel, onBack, onNewUserDuel }: { userId: string, onOpenDuel: (duel: any) => void, onBack: () => void, onNewUserDuel: () => void }) {
   const [duels, setDuels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1810,7 +2010,6 @@ function DuelsList({ userId, onOpenDuel, onBack, onNewUserDuel }: { userId: stri
   );
 }
 
-// Kategorie-Auswahl beim Starten eines User-Duells
 function UserDuelCategorySelect({ opponent, userId, onBack, onStart }: { opponent: any, userId: string, onBack: () => void, onStart: (duel: any) => void }) {
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1846,7 +2045,6 @@ function UserDuelCategorySelect({ opponent, userId, onBack, onStart }: { opponen
       return;
     }
 
-    // Send notification
     const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
     await supabase.from('notifications').insert({
       user_id: opponent.id,
