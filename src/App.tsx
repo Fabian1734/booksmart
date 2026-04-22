@@ -140,6 +140,97 @@ function parseCSV(text: string): CSVQuestion[] {
   return questions;
 }
 
+
+function AddBook() {
+  const [categories, setCategories] = useState<any[]>([]);
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedSubcategory, setSelectedSubcategory] = useState('');
+  const [title, setTitle] = useState('');
+  const [author, setAuthor] = useState('');
+  const [year, setYear] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  useEffect(() => {
+    supabase.from('categories').select('*').order('name').then(({ data }) => setCategories(data || []));
+  }, []);
+
+  useEffect(() => {
+    if (selectedCategory) {
+      supabase.from('subcategories').select('*').eq('category_id', selectedCategory).order('name').then(({ data }) => {
+        setSubcategories(data || []);
+        setSelectedSubcategory('');
+      });
+    } else {
+      setSubcategories([]);
+      setSelectedSubcategory('');
+    }
+  }, [selectedCategory]);
+
+  const handleSave = async () => {
+    if (!title.trim() || !selectedSubcategory) {
+      setMessage({ type: 'error', text: 'Titel und Subkategorie sind pflicht' });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    const { error } = await supabase.from('books').insert({
+      title: title.trim(),
+      author: author.trim() || null,
+      year: year ? parseInt(year) : null,
+      category_id: selectedCategory,
+      subcategory_id: selectedSubcategory,
+    });
+    if (error) {
+      setMessage({ type: 'error', text: `❌ Fehler: ${error.message}` });
+    } else {
+      setMessage({ type: 'success', text: `✅ Buch "${title}" hinzugefügt` });
+      setTitle('');
+      setAuthor('');
+      setYear('');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '16px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Kategorie</label>
+        <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} style={{ ...inputStyle, marginBottom: '16px' }}>
+          <option value="">— Kategorie wählen —</option>
+          {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+        </select>
+
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Subkategorie</label>
+        <select value={selectedSubcategory} onChange={e => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory} style={{ ...inputStyle, marginBottom: '16px', opacity: selectedCategory ? 1 : 0.5 }}>
+          <option value="">— Subkategorie wählen —</option>
+          {subcategories.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+        </select>
+
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Titel *</label>
+        <input style={inputStyle} placeholder="Buchtitel" value={title} onChange={e => setTitle(e.target.value)} />
+
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Autor</label>
+        <input style={inputStyle} placeholder="Autor (optional)" value={author} onChange={e => setAuthor(e.target.value)} />
+
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Jahr</label>
+        <input style={inputStyle} placeholder="Erscheinungsjahr (optional)" value={year} onChange={e => setYear(e.target.value)} type="number" />
+      </div>
+
+      <button style={{ ...btnPrimary, opacity: saving ? 0.5 : 1 }} onClick={handleSave} disabled={saving}>
+        {saving ? 'Speichern...' : 'Buch speichern'}
+      </button>
+
+      {message && (
+        <div style={{ backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
+          {message.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // EXCEL EXPORT/IMPORT KOMPONENTE
 function ExcelExportImport() {
   const [categories, setCategories] = useState<any[]>([]);
@@ -562,6 +653,11 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
 
         {/* NEUE EXCEL EXPORT/IMPORT KOMPONENTE */}
         <ExcelExportImport />
+
+        <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
+          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>📚 Buch hinzufügen</h3>
+          <AddBook />
+        </div>
 
         <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
           <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>Gemeldete Fragen</h3>
