@@ -2171,58 +2171,47 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   const [activeDuel, setActiveDuel] = useState<any>(null);
   const [challengingUser, setChallengingUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [totalQuestions, setTotalQuestions] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeDuelsCount, setActiveDuelsCount] = useState(0);
+  const [myActiveDuels, setMyActiveDuels] = useState<any[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
 
   const loadUnreadCount = async () => {
     const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_read', false);
     setUnreadCount(count || 0);
   };
 
-  const loadActiveDuelsCount = async () => {
-    const { count } = await supabase
+  const loadActiveDuels = async () => {
+    const { data } = await supabase
       .from('duels')
-      .select('*', { count: 'exact', head: true })
+      .select(`*, challenger:profiles!duels_challenger_id_fkey(username), opponent:profiles!duels_opponent_id_fkey(username), categories(name)`)
+      .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
       .eq('opponent_is_bot', false)
-      .eq('current_turn_user_id', user.id);
-    setActiveDuelsCount(count || 0);
+      .neq('status', 'completed')
+      .order('created_at', { ascending: false });
+    setMyActiveDuels(data || []);
+    setActiveDuelsCount((data || []).filter((d: any) => d.current_turn_user_id === user.id).length);
+  };
+
+  const loadOnlineUsers = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .neq('id', user.id)
+      .limit(10);
+    setOnlineUsers(data || []);
   };
 
   useEffect(() => {
-    const loadData = async () => {
-      const { data: cats } = await supabase.from('categories').select('*');
-      const categoriesWithCounts: any[] = [];
-      for (const cat of cats || []) {
-        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('category_id', cat.id);
-        categoriesWithCounts.push({ ...cat, question_count: count || 0 });
-      }
-      setCategories(categoriesWithCounts);
-      const { count: total } = await supabase.from('questions').select('*', { count: 'exact', head: true });
-      setTotalQuestions(total || 0);
-    };
-
-    supabase.from('profiles').select('is_admin').eq('id', user.id).single().then(({ data }) => {
-      setIsAdmin(data?.is_admin || false);
-    });
-
-    loadData();
+    supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
+    supabase.from('profiles').select('is_admin').eq('id', user.id).single().then(({ data }) => setIsAdmin(data?.is_admin || false));
     loadUnreadCount();
-    loadActiveDuelsCount();
-
-    const interval = setInterval(() => {
-      loadUnreadCount();
-      loadActiveDuelsCount();
-    }, 30000);
+    loadActiveDuels();
+    loadOnlineUsers();
+    const interval = setInterval(() => { loadUnreadCount(); loadActiveDuels(); }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
-
-  const icons: Record<string, string> = {
-    'Geschichte der Schweiz': '🇨🇭',
-    'Philosophie & Denker': '💭',
-    'Weltgeschichte': '🌍',
-  };
 
   const startBotDuel = async (bot: any) => {
     const { data } = await supabase.from('duels').insert({
@@ -2232,14 +2221,11 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       category_id: selectedCategory.id,
       status: 'challenger_turn',
     }).select().single();
-    if (data) {
-      setActiveDuel(data);
-      setView('botDuel');
-    }
+    if (data) { setActiveDuel(data); setView('botDuel'); }
   };
 
-  if (view === 'botDuel' && activeDuel) return <BotDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('home'); loadActiveDuelsCount(); }} />;
-  if (view === 'userDuel' && activeDuel) return <UserDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('userDuelsList'); loadActiveDuelsCount(); }} />;
+  if (view === 'botDuel' && activeDuel) return <BotDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('home'); loadActiveDuels(); }} />;
+  if (view === 'userDuel' && activeDuel) return <UserDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('home'); loadActiveDuels(); }} />;
   if (view === 'highscores') return <Highscores onBack={() => setView('home')} userId={user.id} />;
   if (view === 'admin') return <AdminImport onBack={() => setView('home')} />;
   if (view === 'notifications') return <Notifications userId={user.id} onBack={() => { setView('home'); loadUnreadCount(); }} />;
@@ -2273,15 +2259,10 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
         <button onClick={() => setView('home')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
-        <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '20px' }}>Das Thema pro Runde wählst du später im Duell</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {categories.map(cat => (
-            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectOpponentBot'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <div style={{ fontSize: '28px' }}>{icons[cat.name] || '📚'}</div>
-                <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
-              </div>
-              <div style={{ color: colors.muted, fontSize: '14px' }}>{cat.question_count} Fragen</div>
+            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectOpponentBot'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
             </div>
           ))}
         </div>
@@ -2289,55 +2270,129 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     </div>
   );
 
+  // HOME VIEW
+  const myTurnDuels = myActiveDuels.filter(d => d.current_turn_user_id === user.id);
+  const waitingDuels = myActiveDuels.filter(d => d.current_turn_user_id !== user.id);
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
-      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', paddingTop: '12px' }}>
-          <h1 style={{ color: colors.primary, letterSpacing: '2px', margin: 0, fontSize: 'clamp(20px, 5vw, 28px)' }}>BOOKSMART</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button onClick={() => setView('notifications')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', position: 'relative', padding: '4px 8px' }}>
+      {/* Header */}
+      <div style={{ backgroundColor: colors.primary, padding: '16px', position: 'sticky', top: 0, zIndex: 100 }}>
+        <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1 style={{ color: '#F5F0E8', letterSpacing: '3px', margin: 0, fontSize: 'clamp(16px, 4vw, 22px)', fontWeight: 'bold' }}>BOOKSMART</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button onClick={() => setView('notifications')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', position: 'relative', padding: '6px' }}>
               🔔
-              {unreadCount > 0 && (
-                <span style={{ position: 'absolute', top: '0', right: '0', backgroundColor: '#E53935', color: 'white', fontSize: '11px', fontWeight: 'bold', borderRadius: '50%', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{unreadCount}</span>
-              )}
+              {unreadCount > 0 && <span style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: '#E53935', color: 'white', fontSize: '10px', fontWeight: 'bold', borderRadius: '50%', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unreadCount}</span>}
             </button>
-            <button onClick={onLogout} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px' }}>Abmelden</button>
+            <button onClick={onLogout} style={{ background: 'none', border: '1px solid rgba(245,240,232,0.3)', color: '#F5F0E8', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '12px', padding: '6px 12px', borderRadius: '2px', letterSpacing: '1px' }}>ABMELDEN</button>
           </div>
         </div>
-        <p style={{ color: colors.muted, fontSize: '13px', letterSpacing: '1px', marginBottom: '8px' }}>WILLKOMMEN ZURÜCK</p>
-        <p style={{ color: colors.text, fontSize: '15px', marginBottom: '32px' }}>{totalQuestions} Fragen hinterlegt</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div onClick={() => setView('selectCategoryBot')} style={{ backgroundColor: colors.primary, padding: '28px 20px', cursor: 'pointer', borderRadius: '4px' }}>
-            <div style={{ fontSize: '28px', marginBottom: '10px' }}>🤖</div>
-            <div style={{ color: '#F5F0E8', fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>DUELL VS BOT</div>
-            <div style={{ color: '#C9A0AC', fontSize: '12px' }}>Spiele gegen einen Bot</div>
-          </div>
-          <div onClick={() => setView('userDuelsList')} style={{ backgroundColor: colors.primary, padding: '28px 20px', cursor: 'pointer', borderRadius: '4px', position: 'relative' }}>
-            <div style={{ fontSize: '28px', marginBottom: '10px' }}>⚔️</div>
-            <div style={{ color: '#F5F0E8', fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>DUELL VS USER</div>
-            <div style={{ color: '#C9A0AC', fontSize: '12px' }}>Spiele gegen echte Spieler</div>
-            {activeDuelsCount > 0 && (
-              <span style={{ position: 'absolute', top: '12px', right: '12px', backgroundColor: '#F5F0E8', color: colors.primary, fontSize: '12px', fontWeight: 'bold', borderRadius: '12px', padding: '3px 8px' }}>{activeDuelsCount} dran</span>
-            )}
-          </div>
-          <div onClick={() => setView('highscores')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer' }}>
-            <div style={{ fontSize: '28px', marginBottom: '10px' }}>🏆</div>
-            <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>HIGHSCORES</div>
-            <div style={{ color: colors.muted, fontSize: '12px' }}>Beste Spieler</div>
-          </div>
-          <div onClick={() => setView('userSearch')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer' }}>
-            <div style={{ fontSize: '28px', marginBottom: '10px' }}>👥</div>
-            <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>FREUNDE</div>
-            <div style={{ color: colors.muted, fontSize: '12px' }}>Spieler suchen</div>
-          </div>
-          {isAdmin && (
-            <div onClick={() => setView('admin')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '28px 20px', borderRadius: '4px', cursor: 'pointer', gridColumn: 'span 2' }}>
-              <div style={{ fontSize: '28px', marginBottom: '10px' }}>⚙️</div>
-              <div style={{ color: colors.text, fontSize: 'clamp(14px, 3.5vw, 17px)', letterSpacing: '1px', marginBottom: '6px' }}>ADMIN</div>
-              <div style={{ color: colors.muted, fontSize: '12px' }}>Fragen importieren</div>
+      </div>
+
+      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+
+        {/* AKTUELLE DUELLE */}
+        <section>
+          <h2 style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '12px', margin: '0 0 12px 0' }}>Aktuelle Duelle</h2>
+          {myActiveDuels.length === 0 ? (
+            <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '20px', textAlign: 'center' }}>
+              <p style={{ color: colors.muted, fontSize: '14px', margin: 0 }}>Keine laufenden Duelle</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {myTurnDuels.map(d => {
+                const isChallenger = d.challenger_id === user.id;
+                const opponent = isChallenger ? d.opponent : d.challenger;
+                const roundsPlayed = (d.rounds_data || []).length;
+                return (
+                  <div key={d.id} onClick={() => { setActiveDuel(d); setView('userDuel'); }} style={{ backgroundColor: '#FDFAF5', border: `2px solid ${colors.primary}`, borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold', marginBottom: '2px' }}>vs {opponent?.username}</div>
+                      <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name} · Runde {roundsPlayed + 1} von {TOTAL_ROUNDS}</div>
+                    </div>
+                    <div style={{ backgroundColor: colors.primary, color: '#F5F0E8', fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '2px', letterSpacing: '1px', whiteSpace: 'nowrap' }}>DU BIST DRAN</div>
+                  </div>
+                );
+              })}
+              {waitingDuels.map(d => {
+                const isChallenger = d.challenger_id === user.id;
+                const opponent = isChallenger ? d.opponent : d.challenger;
+                const roundsPlayed = (d.rounds_data || []).length;
+                return (
+                  <div key={d.id} onClick={() => { setActiveDuel(d); setView('userDuel'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '15px', color: colors.text, marginBottom: '2px' }}>vs {opponent?.username}</div>
+                      <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name} · Runde {roundsPlayed + 1} von {TOTAL_ROUNDS}</div>
+                    </div>
+                    <div style={{ fontSize: '12px', color: colors.muted }}>wartet...</div>
+                  </div>
+                );
+              })}
             </div>
           )}
-        </div>
+        </section>
+
+        {/* NEUES QUIZ STARTEN */}
+        <section>
+          <h2 style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', textTransform: 'uppercase', margin: '0 0 12px 0' }}>Neues Quiz starten</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div onClick={() => setView('selectCategoryBot')} style={{ backgroundColor: colors.primary, borderRadius: '4px', padding: '18px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ fontSize: '24px' }}>🤖</div>
+              <div>
+                <div style={{ color: '#F5F0E8', fontSize: '15px', fontWeight: 'bold', marginBottom: '2px' }}>Duell vs Bot</div>
+                <div style={{ color: '#C9A0AC', fontSize: '12px' }}>Spiele gegen eine KI auf deinem Level</div>
+              </div>
+            </div>
+            <div onClick={() => setView('userSearch')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '18px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ fontSize: '24px' }}>⚔️</div>
+              <div>
+                <div style={{ color: colors.text, fontSize: '15px', fontWeight: 'bold', marginBottom: '2px' }}>Duell vs User</div>
+                <div style={{ color: colors.muted, fontSize: '12px' }}>Fordere einen Spieler heraus</div>
+              </div>
+            </div>
+
+            {/* Online Users */}
+            {onlineUsers.length > 0 && (
+              <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '12px 16px' }}>
+                <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '10px' }}>SPIELER</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {onlineUsers.slice(0, 5).map(u => (
+                    <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '14px', color: colors.text }}>{u.username}</span>
+                      <button onClick={() => { setChallengingUser(u); setView('userDuelCategory'); }} style={{ fontSize: '11px', padding: '4px 10px', backgroundColor: 'transparent', border: `1px solid ${colors.primary}`, color: colors.primary, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '1px' }}>HERAUSFORDERN</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* STATISTIK + FREUNDE + ADMIN */}
+        <section>
+          <h2 style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', textTransform: 'uppercase', margin: '0 0 12px 0' }}>Mehr</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div onClick={() => setView('highscores')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', borderRadius: '4px', cursor: 'pointer' }}>
+              <div style={{ fontSize: '24px', marginBottom: '8px' }}>📊</div>
+              <div style={{ color: colors.text, fontSize: '14px', fontWeight: 'bold', marginBottom: '2px' }}>Statistik</div>
+              <div style={{ color: colors.muted, fontSize: '12px' }}>Ranglisten & Duelle</div>
+            </div>
+            <div onClick={() => setView('userSearch')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', borderRadius: '4px', cursor: 'pointer' }}>
+              <div style={{ fontSize: '24px', marginBottom: '8px' }}>👥</div>
+              <div style={{ color: colors.text, fontSize: '14px', fontWeight: 'bold', marginBottom: '2px' }}>Freunde</div>
+              <div style={{ color: colors.muted, fontSize: '12px' }}>Anfragen & Liste</div>
+            </div>
+            {isAdmin && (
+              <div onClick={() => setView('admin')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', borderRadius: '4px', cursor: 'pointer', gridColumn: 'span 2' }}>
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>⚙️</div>
+                <div style={{ color: colors.text, fontSize: '14px', fontWeight: 'bold', marginBottom: '2px' }}>Admin</div>
+                <div style={{ color: colors.muted, fontSize: '12px' }}>Fragen & Bücher verwalten</div>
+              </div>
+            )}
+          </div>
+        </section>
+
       </div>
     </div>
   );
