@@ -1140,22 +1140,15 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
 function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) {
   const [tab, setTab] = useState<'leaderboard' | 'myduels'>('leaderboard');
   const [scores, setScores] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [myDuels, setMyDuels] = useState<any[]>([]);
   const [selectedDuel, setSelectedDuel] = useState<any>(null);
 
   useEffect(() => {
-    supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
-  }, []);
-
-  useEffect(() => {
     if (tab === 'leaderboard') {
       const fetchScores = async () => {
         setLoading(true);
-        let query = supabase.from('scores').select('*, profiles(username), categories(name)').order('points', { ascending: false }).limit(20);
-        if (selectedCategory !== 'all') query = query.eq('category_id', selectedCategory);
+        const query = supabase.from('scores').select('*, profiles(username), categories(name)').order('points', { ascending: false }).limit(20);
         const { data } = await query;
         setScores(data || []);
         setLoading(false);
@@ -1165,7 +1158,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
       loadMyDuels();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, tab, userId]);
+  }, [tab, userId]);
 
   const loadMyDuels = async () => {
     setLoading(true);
