@@ -2172,8 +2172,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   const [challengingUser, setChallengingUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [activeDuelsCount, setActiveDuelsCount] = useState(0);
-  const [myActiveDuels, setMyActiveDuels] = useState<any[]>([]);
+  const [, setActiveDuelsCount] = useState(0);  const [myActiveDuels, setMyActiveDuels] = useState<any[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
 
   const loadUnreadCount = async () => {
