@@ -1165,45 +1165,137 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
 }
 
 function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) {
-  const [tab, setTab] = useState<'leaderboard' | 'myduels'>('leaderboard');
+  const [tab, setTab] = useState<'stats' | 'leaderboard' | 'myduels'>('stats');
   const [scores, setScores] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [myDuels, setMyDuels] = useState<any[]>([]);
   const [selectedDuel, setSelectedDuel] = useState<any>(null);
+  const [myStats, setMyStats] = useState<any[]>([]);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [subStats, setSubStats] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
   }, []);
 
   useEffect(() => {
-    if (tab === 'leaderboard') {
-      const fetchScores = async () => {
-        setLoading(true);
-        let query = supabase.from('scores').select('*, profiles(username), categories(name)').order('points', { ascending: false }).limit(20);
-        if (selectedCategory !== 'all') query = query.eq('category_id', selectedCategory);
-        const { data } = await query;
-        setScores(data || []);
-        setLoading(false);
-      };
-      fetchScores();
-    } else {
-      loadMyDuels();
-    }
+    if (tab === 'stats') loadMyStats();
+    else if (tab === 'leaderboard') loadLeaderboard();
+    else loadMyDuels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, tab, userId]);
+  }, [tab, selectedCategory]);
+
+  const loadMyStats = async () => {
+    setLoading(true);
+    // Load all played duels for this user
+    const { data: duels } = await supabase
+      .from('duels')
+      .select('*, categories(id, name)')
+      .or(`challenger_id.eq.${userId},opponent_id.eq.${userId}`)
+      .eq('status', 'completed');
+
+    const { data: cats } = await supabase.from('categories').select('*');
+
+    const statsMap: Record<string, { correct: number, total: number, name: string }> = {};
+    (cats || []).forEach(cat => { statsMap[cat.id] = { correct: 0, total: 0, name: cat.name }; });
+
+    (duels || []).forEach((d: any) => {
+      const isChallenger = d.challenger_id === userId;
+      const answers = isChallenger ? d.rounds_data?.flatMap((r: any) => r.challenger_answers || []) : d.rounds_data?.flatMap((r: any) => r.opponent_answers || []);
+      if (!answers || !d.category_id) return;
+      if (!statsMap[d.category_id]) statsMap[d.category_id] = { correct: 0, total: 0, name: d.categories?.name || '' };
+      statsMap[d.category_id].correct += answers.filter(Boolean).length;
+      statsMap[d.category_id].total += answers.length;
+    });
+
+    const result = Object.entries(statsMap)
+      .map(([id, s]) => ({ id, ...s, pct: s.total > 0 ? Math.round((s.correct / s.total) * 100) : null }))
+      .filter(s => s.total > 0)
+      .sort((a, b) => (b.pct || 0) - (a.pct || 0));
+
+    setMyStats(result);
+    setLoading(false);
+  };
+
+  const loadSubStats = async (categoryId: string) => {
+    if (subStats[categoryId]) return;
+    const { data: duels } = await supabase
+      .from('duels')
+      .select('rounds_data, challenger_id')
+      .or(`challenger_id.eq.${userId},opponent_id.eq.${userId}`)
+      .eq('status', 'completed')
+      .eq('category_id', categoryId);
+
+    const { data: subs } = await supabase.from('subcategories').select('*').eq('category_id', categoryId);
+    const subMap: Record<string, { correct: number, total: number, name: string }> = {};
+    (subs || []).forEach(s => { subMap[s.id] = { correct: 0, total: 0, name: s.name }; });
+
+    (duels || []).forEach((d: any) => {
+      const isChallenger = d.challenger_id === userId;
+      (d.rounds_data || []).forEach((r: any) => {
+        const answers = isChallenger ? r.challenger_answers : r.opponent_answers;
+        if (!answers || !r.subcategory_id) return;
+        if (!subMap[r.subcategory_id]) subMap[r.subcategory_id] = { correct: 0, total: 0, name: r.subcategory_name || '' };
+        subMap[r.subcategory_id].correct += answers.filter(Boolean).length;
+        subMap[r.subcategory_id].total += answers.length;
+      });
+    });
+
+    const result = Object.entries(subMap)
+      .map(([id, s]) => ({ id, ...s, pct: s.total > 0 ? Math.round((s.correct / s.total) * 100) : null }))
+      .filter(s => s.total > 0)
+      .sort((a, b) => (b.pct || 0) - (a.pct || 0));
+
+    setSubStats(prev => ({ ...prev, [categoryId]: result }));
+  };
+
+  const loadLeaderboard = async () => {
+    setLoading(true);
+    const { data: duels } = await supabase
+      .from('duels')
+      .select('challenger_id, opponent_id, rounds_data, category_id, categories(name)')
+      .eq('status', 'completed');
+
+    const userMap: Record<string, { correct: number, total: number }> = {};
+    (duels || []).forEach((d: any) => {
+      if (!d.rounds_data) return;
+      const cAnswers = d.rounds_data.flatMap((r: any) => r.challenger_answers || []);
+      const oAnswers = d.rounds_data.flatMap((r: any) => r.opponent_answers || []);
+      if (!userMap[d.challenger_id]) userMap[d.challenger_id] = { correct: 0, total: 0 };
+      userMap[d.challenger_id].correct += cAnswers.filter(Boolean).length;
+      userMap[d.challenger_id].total += cAnswers.length;
+      if (d.opponent_id) {
+        if (!userMap[d.opponent_id]) userMap[d.opponent_id] = { correct: 0, total: 0 };
+        userMap[d.opponent_id].correct += oAnswers.filter(Boolean).length;
+        userMap[d.opponent_id].total += oAnswers.length;
+      }
+    });
+
+    const userIds = Object.keys(userMap).filter(id => userMap[id].total >= 9);
+    if (userIds.length === 0) { setScores([]); setLoading(false); return; }
+
+    const { data: profiles } = await supabase.from('profiles').select('id, username').in('id', userIds);
+    const profileMap = new Map((profiles || []).map(p => [p.id, p.username]));
+
+    const result = userIds.map(id => ({
+      id,
+      username: profileMap.get(id) || 'Anonym',
+      correct: userMap[id].correct,
+      total: userMap[id].total,
+      pct: Math.round((userMap[id].correct / userMap[id].total) * 100),
+    })).sort((a, b) => b.pct - a.pct);
+
+    setScores(result);
+    setLoading(false);
+  };
 
   const loadMyDuels = async () => {
     setLoading(true);
     const { data } = await supabase
       .from('duels')
-      .select(`
-        *,
-        challenger:profiles!duels_challenger_id_fkey(username),
-        opponent:profiles!duels_opponent_id_fkey(username),
-        categories(name)
-      `)
+      .select(`*, challenger:profiles!duels_challenger_id_fkey(username), opponent:profiles!duels_opponent_id_fkey(username), categories(name)`)
       .or(`challenger_id.eq.${userId},opponent_id.eq.${userId}`)
       .eq('status', 'completed')
       .order('completed_at', { ascending: false });
@@ -1213,79 +1305,130 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
 
   const medal = (i: number) => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
 
-  if (selectedDuel) {
-    return <DuelDetail duel={selectedDuel} userId={userId} onBack={() => setSelectedDuel(null)} />;
-  }
+  const pctColor = (pct: number) => pct >= 70 ? '#4CAF50' : pct >= 50 ? '#FF9800' : '#E53935';
+
+  if (selectedDuel) return <DuelDetail duel={selectedDuel} userId={userId} onBack={() => setSelectedDuel(null)} />;
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
         <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>
-          {tab === 'leaderboard' ? 'HIGHSCORES' : 'MEINE DUELLE'}
-        </h2>
-        
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-          <button onClick={() => setTab('leaderboard')} style={{ padding: '10px 20px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', backgroundColor: tab === 'leaderboard' ? colors.primary : colors.light, color: tab === 'leaderboard' ? '#F5F0E8' : colors.text }}>Bestenliste</button>
-          <button onClick={() => setTab('myduels')} style={{ padding: '10px 20px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', backgroundColor: tab === 'myduels' ? colors.primary : colors.light, color: tab === 'myduels' ? '#F5F0E8' : colors.text }}>Meine Duelle</button>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>STATISTIK</h2>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: `1px solid ${colors.light}`, paddingBottom: '0' }}>
+          {(['stats', 'leaderboard', 'myduels'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{ padding: '10px 16px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: 'transparent', color: tab === t ? colors.primary : colors.muted, borderBottom: tab === t ? `2px solid ${colors.primary}` : '2px solid transparent', fontWeight: tab === t ? 'bold' : 'normal', letterSpacing: '1px' }}>
+              {t === 'stats' ? 'MEINE STATS' : t === 'leaderboard' ? 'RANGLISTE' : 'MEINE DUELLE'}
+            </button>
+          ))}
         </div>
 
-        {tab === 'myduels' ? (
-          loading ? <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p> : myDuels.length === 0 ? (
-            <p style={{ color: colors.muted, textAlign: 'center' }}>Noch keine abgeschlossenen Duelle</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {myDuels.map(d => {
-                const isChallenger = d.challenger_id === userId;
-                const opponent = isChallenger ? d.opponent : d.challenger;
-                const myScore = isChallenger ? (d.challenger_score || 0) : (d.opponent_score || 0);
-                const oppScore = isChallenger ? (d.opponent_score || 0) : (d.challenger_score || 0);
-                const won = myScore > oppScore;
-                const draw = myScore === oppScore;
-                const oppName = d.opponent_is_bot ? bots.find(b => b.level === d.bot_level)?.name || 'Bot' : opponent?.username;
-                
-                return (
-                  <div key={d.id} onClick={() => setSelectedDuel(d)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold' }}>vs {oppName}</div>
-                      <div style={{ fontSize: '16px', color: colors.text }}>{myScore} : {oppScore}</div>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name}</div>
-                      <div style={{ fontSize: '13px', color: won ? '#4CAF50' : draw ? colors.muted : '#E53935' }}>
-                        {won ? 'Gewonnen 🏆' : draw ? 'Unentschieden' : 'Verloren'}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )
-        ) : (
+        {loading ? <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>LADEN...</p> : (
           <>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
-              <button onClick={() => setSelectedCategory('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === 'all' ? colors.primary : colors.light, color: selectedCategory === 'all' ? '#F5F0E8' : colors.text }}>Alle</button>
-              {categories.map(cat => (
-                <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === cat.id ? colors.primary : colors.light, color: selectedCategory === cat.id ? '#F5F0E8' : colors.text }}>{cat.name}</button>
-              ))}
-            </div>
-            {loading ? <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p> : scores.length === 0 ? (
-              <p style={{ color: colors.muted, textAlign: 'center' }}>Noch keine Scores.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {scores.map((score, i) => (
-                  <div key={score.id} style={{ backgroundColor: '#FDFAF5', border: `1px solid ${i === 0 ? '#DAA520' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#C9B99A'}`, padding: '14px 16px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: i < 3 ? '20px' : '14px', minWidth: '28px', textAlign: 'center', color: colors.muted }}>{medal(i)}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ color: colors.text, fontSize: '15px', marginBottom: '2px' }}>{score.profiles?.username || 'Anonym'}</div>
-                      <div style={{ color: colors.muted, fontSize: '12px' }}>{score.categories?.name}</div>
+            {/* MEINE STATS */}
+            {tab === 'stats' && (
+              <div>
+                {myStats.length === 0 ? (
+                  <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>Noch keine Duelle gespielt</p>
+                ) : myStats.map(cat => (
+                  <div key={cat.id} style={{ marginBottom: '8px' }}>
+                    <div onClick={() => { setExpandedCategory(expandedCategory === cat.id ? null : cat.id); loadSubStats(cat.id); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '15px', color: colors.text, marginBottom: '6px' }}>{cat.name}</div>
+                        <div style={{ height: '6px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ height: '6px', backgroundColor: pctColor(cat.pct), borderRadius: '3px', width: `${cat.pct}%`, transition: 'width 0.4s' }} />
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: '20px', fontWeight: 'bold', color: pctColor(cat.pct) }}>{cat.pct}%</div>
+                        <div style={{ fontSize: '11px', color: colors.muted }}>{cat.correct}/{cat.total}</div>
+                      </div>
+                      <div style={{ color: colors.muted, fontSize: '12px' }}>{expandedCategory === cat.id ? '▲' : '▼'}</div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ color: colors.primary, fontSize: '18px', fontWeight: 'bold' }}>{score.points}</div>
-                      <div style={{ color: colors.muted, fontSize: '12px' }}>{score.correct_count}/{score.total_questions} richtig</div>
-                    </div>
+                    {expandedCategory === cat.id && (
+                      <div style={{ backgroundColor: '#FAF8F4', border: '1px solid #E8DFD0', borderTop: 'none', borderRadius: '0 0 4px 4px', padding: '8px 16px' }}>
+                        {!subStats[cat.id] ? (
+                          <p style={{ color: colors.muted, fontSize: '13px', padding: '8px 0' }}>Laden...</p>
+                        ) : subStats[cat.id].length === 0 ? (
+                          <p style={{ color: colors.muted, fontSize: '13px', padding: '8px 0' }}>Keine Daten</p>
+                        ) : subStats[cat.id].map(sub => (
+                          <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 0', borderBottom: `1px solid ${colors.light}` }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '13px', color: colors.text, marginBottom: '4px' }}>{sub.name}</div>
+                              <div style={{ height: '4px', backgroundColor: colors.light, borderRadius: '2px', overflow: 'hidden' }}>
+                                <div style={{ height: '4px', backgroundColor: pctColor(sub.pct), borderRadius: '2px', width: `${sub.pct}%` }} />
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                              <div style={{ fontSize: '15px', fontWeight: 'bold', color: pctColor(sub.pct) }}>{sub.pct}%</div>
+                              <div style={{ fontSize: '11px', color: colors.muted }}>{sub.correct}/{sub.total}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* RANGLISTE */}
+            {tab === 'leaderboard' && (
+              <div>
+                {scores.length === 0 ? (
+                  <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>Noch keine Daten (min. 3 Duelle nötig)</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {scores.map((s, i) => (
+                      <div key={s.id} style={{ backgroundColor: '#FDFAF5', border: `1px solid ${i === 0 ? '#DAA520' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#C9B99A'}`, padding: '14px 16px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: i < 3 ? '20px' : '14px', minWidth: '28px', textAlign: 'center' }}>{medal(i)}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: colors.text, fontSize: '15px', marginBottom: '4px' }}>{s.username}{s.id === userId ? ' (du)' : ''}</div>
+                          <div style={{ height: '5px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden' }}>
+                            <div style={{ height: '5px', backgroundColor: pctColor(s.pct), borderRadius: '3px', width: `${s.pct}%` }} />
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ color: pctColor(s.pct), fontSize: '18px', fontWeight: 'bold' }}>{s.pct}%</div>
+                          <div style={{ color: colors.muted, fontSize: '11px' }}>{s.correct}/{s.total}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* MEINE DUELLE */}
+            {tab === 'myduels' && (
+              <div>
+                {myDuels.length === 0 ? (
+                  <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>Noch keine abgeschlossenen Duelle</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {myDuels.map(d => {
+                      const isChallenger = d.challenger_id === userId;
+                      const opponent = isChallenger ? d.opponent : d.challenger;
+                      const myScore = isChallenger ? (d.challenger_score || 0) : (d.opponent_score || 0);
+                      const oppScore = isChallenger ? (d.opponent_score || 0) : (d.challenger_score || 0);
+                      const won = myScore > oppScore;
+                      const draw = myScore === oppScore;
+                      const oppName = d.opponent_is_bot ? bots.find(b => b.level === d.bot_level)?.name || 'Bot' : opponent?.username;
+                      return (
+                        <div key={d.id} onClick={() => setSelectedDuel(d)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold', marginBottom: '2px' }}>vs {oppName}</div>
+                            <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name}</div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '15px', color: colors.text, marginBottom: '2px' }}>{myScore} : {oppScore}</div>
+                            <div style={{ fontSize: '12px', color: won ? '#4CAF50' : draw ? colors.muted : '#E53935' }}>{won ? 'Gewonnen' : draw ? 'Unentschieden' : 'Verloren'}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </>
