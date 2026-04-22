@@ -1167,8 +1167,7 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
 function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) {
   const [tab, setTab] = useState<'stats' | 'leaderboard' | 'myduels'>('stats');
   const [scores, setScores] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [categories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [myDuels, setMyDuels] = useState<any[]>([]);
   const [selectedDuel, setSelectedDuel] = useState<any>(null);
