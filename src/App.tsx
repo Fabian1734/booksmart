@@ -142,6 +142,129 @@ function parseCSV(text: string): CSVQuestion[] {
   return questions;
 }
 
+function IntermediateScore({ myTotal, botTotal, roundsPlayed, onContinue }: { myTotal: number, botTotal: number, roundsPlayed: number, onContinue: () => void }) {
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+        <div style={{ fontSize: '52px', marginBottom: '16px' }}>📊</div>
+        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>ZWISCHENSTAND</h2>
+        <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>NACH RUNDE {roundsPlayed}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
+          <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${myTotal >= botTotal ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
+            <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
+            <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotal}</div>
+          </div>
+          <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${botTotal > myTotal ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
+            <div style={{ fontSize: '20px', marginBottom: '6px' }}>🤖</div>
+            <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>GEGNER</div>
+            <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
+          </div>
+        </div>
+        <button style={btnPrimary} onClick={onContinue}>Weiter</button>
+      </div>
+    </div>
+  );
+}
+
+function QuizRound({
+  questions,
+  roundNumber,
+  totalRounds,
+  bot,
+  onRoundComplete,
+}: {
+  questions: any[],
+  roundNumber: number,
+  totalRounds: number,
+  bot: any,
+  onRoundComplete: (userAnswers: boolean[], botAnswers: boolean[] | null, selectedAnswers: string[]) => void | Promise<void>,
+}) {
+  const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  const allAnswered = questions.length > 0 && selectedAnswers.length === questions.length && selectedAnswers.every(Boolean);
+
+  const pickAnswer = (qIdx: number, answerKey: string) => {
+    if (submitting) return;
+    setSelectedAnswers(prev => {
+      const next = [...prev];
+      next[qIdx] = answerKey;
+      return next;
+    });
+  };
+
+  const finishRound = async () => {
+    if (!allAnswered || submitting) return;
+    setSubmitting(true);
+
+    const userCorrect = questions.map((q: any, qIdx: number) => selectedAnswers[qIdx] === q.correct_answer);
+    const botSelections = bot
+      ? questions.map((q: any) => {
+          const optionKeys = q.type === 'true_false'
+            ? ['Wahr', 'Falsch']
+            : ['A', 'B', 'C', 'D'].filter((k) => q[`option_${k.toLowerCase()}`]);
+          return getBotAnswer(optionKeys, q.correct_answer, bot.accuracy);
+        })
+      : null;
+    const botCorrect = botSelections ? botSelections.map((a, idx) => a === questions[idx].correct_answer) : null;
+
+    await onRoundComplete(userCorrect, botCorrect, selectedAnswers);
+    setSubmitting(false);
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
+        <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '16px' }}>RUNDE {roundNumber} VON {totalRounds}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {questions.map((q: any, qIdx: number) => {
+            const options = q.type === 'true_false'
+              ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
+              : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
+            const selected = selectedAnswers[qIdx];
+            return (
+              <div key={q.id || qIdx} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px' }}>
+                <div style={{ color: colors.text, fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>Frage {qIdx + 1}</div>
+                <div style={{ color: colors.text, fontSize: '14px', marginBottom: '14px', lineHeight: '1.5' }}>{q.question_text}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {options.map(opt => (
+                    <button
+                      key={opt.key}
+                      onClick={() => pickAnswer(qIdx, opt.key)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        backgroundColor: selected === opt.key ? '#E8F5E9' : 'white',
+                        border: selected === opt.key ? '1px solid #4CAF50' : '1px solid #E8DFD0',
+                        borderRadius: '4px',
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        fontFamily: 'Helvetica, Arial, sans-serif',
+                        fontSize: '13px',
+                        color: colors.text,
+                      }}
+                    >
+                      <span style={{ fontWeight: 'bold', marginRight: '8px' }}>{opt.key}.</span>{opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <button
+          style={{ ...btnPrimary, marginTop: '20px', opacity: allAnswered && !submitting ? 1 : 0.6, cursor: allAnswered && !submitting ? 'pointer' : 'not-allowed' }}
+          onClick={finishRound}
+          disabled={!allAnswered || submitting}
+        >
+          {submitting ? 'Speichern...' : 'Runde abschliessen'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AdminImport({ onBack }: { onBack: () => void }) {
   const [, setCsvText] = useState('');
   const [questions, setQuestions] = useState<CSVQuestion[]>([]);
@@ -1988,7 +2111,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   if (view === 'userSearch') return <UserSearch userId={user.id} onBack={() => setView('home')} onChallenge={(opp) => { setChallengingUser(opp); setView('userDuelCategory'); }} />;
   if (view === 'mapQuiz') return <MapQuiz userId={user.id} onBack={() => setView('home')} />;
   if (view === 'userDuelCategory' && challengingUser) return <UserDuelCategorySelect opponent={challengingUser} userId={user.id} onBack={() => setView('userSearch')} onStart={(duel) => { setChallengingUser(null); setActiveDuel(duel); setView('userDuel'); }} />;
-  if (view === 'userDuelsList')
+  if (view === 'userDuelsList') return <DuelsList userId={user.id} onOpenDuel={(duel) => { setActiveDuel(duel); setView('userDuel'); }} onBack={() => setView('home')} onNewUserDuel={() => setView('userSearch')} />;
   if (view === 'selectOpponentBot') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
