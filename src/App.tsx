@@ -1118,169 +1118,162 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
           )
         ) : (
           <>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '24px' }}>
-              <button onClick={() => setSelectedCategory('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === 'all' ? colors.primary : colors.light, color: selectedCategory === 'all' ? '#F5F0E8' : colors.text }}>Alle</button>
-              {categories.map(cat => (
-                <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: selectedCategory === cat.id ? colors.primary : colors.light, color: selectedCategory === cat.id ? '#F5F0E8' : colors.text }}>{cat.name}</button>
-              ))}
-            </div>
-            {loading ? <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p> : scores.length === 0 ? (
-              <p style={{ color: colors.muted, textAlign: 'center' }}>Noch keine Scores.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {scores.map((score, i) => (
-                  <div key={score.id} style={{ backgroundColor: '#FDFAF5', border: `1px solid ${i === 0 ? '#DAA520' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#C9B99A'}`, padding: '14px 16px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: i < 3 ? '20px' : '14px', minWidth: '28px', textAlign: 'center', color: colors.muted }}>{medal(i)}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ color: colors.text, fontSize: '15px', marginBottom: '2px' }}>{score.profiles?.username || 'Anonym'}</div>
-                      <div style={{ color: colors.muted, fontSize: '12px' }}>{score.categories?.name}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ color: colors.primary, fontSize: '18px', fontWeight: 'bold' }}>{score.points}</div>
-                      <div style={{ color: colors.muted, fontSize: '12px' }}>{score.correct_count}/{score.total_questions} richtig</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            
+            function MapQuiz({ userId, onBack }: { userId: string, onBack: () => void }) {
+  const [locations, setLocations] = useState<any[]>([]);
+  const [currentRound, setCurrentRound] = useState(0);
+  const [clickedPoint, setClickedPoint] = useState<{ x: number, y: number } | null>(null);
+  const [showResult, setShowResult] = useState(false);
+  const [distance, setDistance] = useState(0);
+  const [points, setPoints] = useState(0);
+  const [totalPoints, setTotalPoints] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const TOTAL_ROUNDS = 10;
+  const svgWidth = 400;
+  const svgHeight = 500;
+
+  const swissBox = {
+    minLat: 45.818,
+    maxLat: 47.808,
+    minLon: 5.956,
+    maxLon: 10.492
+  };
+
+  useEffect(() => {
+    loadLocations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loadLocations = async () => {
+    const { data } = await supabase.from('map_locations').select('*');
+    if (data) {
+      const shuffled = data.sort(() => Math.random() - 0.5).slice(0, TOTAL_ROUNDS);
+      setLocations(shuffled);
+    }
+    setLoading(false);
+  };
+
+  const latLonToSVG = (lat: number, lon: number) => {
+    const x = ((lon - swissBox.minLon) / (swissBox.maxLon - swissBox.minLon)) * svgWidth;
+    const y = svgHeight - ((lat - swissBox.minLat) / (swissBox.maxLat - swissBox.minLat)) * svgHeight;
+    return { x, y };
+  };
+
+  const calculateDistance = (x1: number, y1: number, x2: number, y2: number) => {
+    return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+  };
+
+  const handleMapClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (showResult) return;
+    
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * svgWidth;
+    const y = ((e.clientY - rect.top) / rect.height) * svgHeight;
+    
+    setClickedPoint({ x, y });
+
+    const currentLocation = locations[currentRound];
+    const correctPos = latLonToSVG(currentLocation.latitude, currentLocation.longitude);
+    const dist = calculateDistance(x, y, correctPos.x, correctPos.y);
+    
+    const earnedPoints = Math.max(0, Math.floor(100 - dist));
+    
+    setDistance(Math.round(dist));
+    setPoints(earnedPoints);
+    setTotalPoints(prev => prev + earnedPoints);
+    setShowResult(true);
+
+    setTimeout(() => {
+      if (currentRound + 1 >= TOTAL_ROUNDS) {
+        setGameOver(true);
+      } else {
+        setCurrentRound(prev => prev + 1);
+        setClickedPoint(null);
+        setShowResult(false);
+      }
+    }, 3000);
+  };
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+    </div>
+  );
+
+  if (gameOver) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+        <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+          <div style={{ fontSize: '52px', marginBottom: '16px' }}>🗺️</div>
+          <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>QUIZ BEENDET</h2>
+          <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>10 ORTE PLATZIERT</p>
+          <div style={{ backgroundColor: '#FDFAF5', border: '2px solid ' + colors.primary, padding: '32px 20px', borderRadius: '4px', marginBottom: '24px' }}>
+            <div style={{ fontSize: '48px', fontWeight: 'bold', color: colors.primary, marginBottom: '8px' }}>{totalPoints}</div>
+            <div style={{ fontSize: '14px', color: colors.muted }}>von 1000 Punkten</div>
+          </div>
+          <button style={btnPrimary} onClick={onBack}>Zurück zum Dashboard</button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentLocation = locations[currentRound];
+  const correctPos = latLonToSVG(currentLocation.latitude, currentLocation.longitude);
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>RUNDE {currentRound + 1} VON {TOTAL_ROUNDS}</span>
+          <span style={{ color: colors.primary, fontSize: '16px', fontWeight: 'bold' }}>{totalPoints} Punkte</span>
+        </div>
+
+        <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px', textAlign: 'center' }}>
+          <h2 style={{ fontSize: 'clamp(18px, 4vw, 24px)', color: colors.text, marginBottom: '8px' }}>Wo liegt {currentLocation.name}?</h2>
+          <p style={{ fontSize: '13px', color: colors.muted }}>
+            {currentLocation.type === 'city' ? '📍 Stadt' : currentLocation.type === 'mountain' ? '⛰️ Berg' : '🌊 See'}
+          </p>
+        </div>
+
+        <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '16px' }}>
+          <svg 
+            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            style={{ width: '100%', height: 'auto', cursor: showResult ? 'default' : 'crosshair', backgroundColor: '#E8F4F8', borderRadius: '4px' }}
+            onClick={handleMapClick}
+          >
+            <path d="M50,250 L100,200 L150,180 L200,170 L250,175 L300,200 L350,250 L380,300 L370,350 L340,400 L300,430 L250,450 L200,460 L150,450 L100,420 L60,380 L40,330 Z" 
+              fill="#C8E6C9" stroke="#2E7D32" strokeWidth="2" />
+            
+            {clickedPoint && (
+              <circle cx={clickedPoint.x} cy={clickedPoint.y} r="8" fill="#E53935" stroke="white" strokeWidth="2" />
             )}
-          </>
+            
+            {showResult && (
+              <>
+                <circle cx={correctPos.x} cy={correctPos.y} r="8" fill="#4CAF50" stroke="white" strokeWidth="2" />
+                <line x1={clickedPoint!.x} y1={clickedPoint!.y} x2={correctPos.x} y2={correctPos.y} stroke="#666" strokeWidth="1" strokeDasharray="4" />
+              </>
+            )}
+          </svg>
+        </div>
+
+        {showResult && (
+          <div style={{ backgroundColor: points > 70 ? '#E8F5E9' : points > 40 ? '#FFF9E6' : '#FDECEA', border: `1px solid ${points > 70 ? '#4CAF50' : points > 40 ? '#FFC107' : '#E53935'}`, borderRadius: '4px', padding: '16px', textAlign: 'center' }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>{points > 70 ? '🎯' : points > 40 ? '👍' : '😅'}</div>
+            <div style={{ fontSize: '18px', color: colors.text, marginBottom: '4px', fontWeight: 'bold' }}>+{points} Punkte</div>
+            <div style={{ fontSize: '13px', color: colors.muted }}>Distanz: {distance} Pixel</div>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// QUIZ ROUND - für einzelne Runde (sowohl Bot als auch User Duell)
-function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }: {
-  questions: any[], roundNumber: number, totalRounds: number, bot: any | null,
-  onRoundComplete: (userAnswers: boolean[], botAnswers: boolean[] | null, selectedAnswers: string[]) => void
-}) {
-  const [current, setCurrent] = useState(0);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [botAnswer, setBotAnswer] = useState<string | null>(null);
-  const [showResult, setShowResult] = useState(false);
-  const [userAnswers, setUserAnswers] = useState<boolean[]>([]);
-  const [botAnswers, setBotAnswers] = useState<boolean[]>([]);
-  const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
-
-  const handleAnswer = (answer: string) => {
-    if (selected) return;
-    setSelected(answer);
-
-    setTimeout(() => {
-      const q = questions[current];
-      const optionKeys = q.type === 'true_false' ? ['Wahr', 'Falsch'] : ['A', 'B', 'C', 'D'];
-      const userIsCorrect = answer === q.correct_answer;
-      
-      let bAnswer: string | null = null;
-      let botIsCorrect = false;
-      if (bot) {
-        bAnswer = getBotAnswer(optionKeys, q.correct_answer, bot.accuracy);
-        botIsCorrect = bAnswer === q.correct_answer;
-        setBotAnswer(bAnswer);
-      }
-      
-      setShowResult(true);
-      setUserAnswers(prev => [...prev, userIsCorrect]);
-      if (bot) setBotAnswers(prev => [...prev, botIsCorrect]);
-      setSelectedAnswers(prev => [...prev, answer]);
-
-      setTimeout(() => {
-        if (current + 1 >= questions.length) {
-          onRoundComplete(
-            [...userAnswers, userIsCorrect],
-            bot ? [...botAnswers, botIsCorrect] : null,
-            [...selectedAnswers, answer]
-          );
-        } else {
-          setCurrent(c => c + 1);
-          setSelected(null);
-          setBotAnswer(null);
-          setShowResult(false);
-        }
-      }, 1500);
-    }, 1000);
-  };
-
-  const q = questions[current];
-  const options = q.type === 'true_false'
-    ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
-    : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
-
-  return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
-      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingTop: '12px' }}>
-          <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>RUNDE {roundNumber} VON {totalRounds}</span>
-          <span style={{ color: colors.muted, fontSize: '12px' }}>{current + 1}/{questions.length}</span>
-        </div>
-        <div style={{ height: '4px', backgroundColor: colors.light, borderRadius: '2px', marginBottom: '28px' }}>
-          <div style={{ height: '4px', backgroundColor: colors.primary, borderRadius: '2px', width: `${((current + 1) / questions.length) * 100}%`, transition: 'width 0.3s' }} />
-        </div>
-        <p style={{ fontSize: 'clamp(16px, 4vw, 20px)', color: colors.text, lineHeight: '1.6', marginBottom: '24px' }}>{q.question_text}</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {options.map(opt => {
-            const isCorrect = opt.key === q.correct_answer;
-            const isUserSelected = opt.key === selected;
-            const isBotSelected = opt.key === botAnswer;
-            let bg = '#FDFAF5', border = '1px solid #C9B99A', color = colors.text;
-            if (isUserSelected && !showResult) { bg = '#E8DFD0'; border = '2px solid ' + colors.primary; }
-            if (showResult) {
-              if (isCorrect) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; color = '#2E7D32'; }
-              else if (isUserSelected) { bg = '#FDECEA'; border = '1px solid #E53935'; color = '#B71C1C'; }
-            }
-            return (
-              <button key={opt.key} onClick={() => handleAnswer(opt.key)} style={{
-                padding: '14px 16px', backgroundColor: bg, border, color,
-                fontSize: 'clamp(14px, 3.5vw, 16px)', fontFamily: 'Helvetica, Arial, sans-serif',
-                cursor: selected ? 'default' : 'pointer', borderRadius: '4px',
-                textAlign: 'left', minHeight: '52px', WebkitTapHighlightColor: 'transparent',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
-                <span style={{ flex: 1, paddingRight: '8px' }}>
-                  <span style={{ fontWeight: 'bold', marginRight: '10px' }}>{opt.key}.</span>{opt.label}
-                </span>
-                {showResult && bot && (isUserSelected || isBotSelected) && (
-                  <span style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                    {isUserSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>👤</span>}
-                    {isBotSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>{bot.emoji}</span>}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function IntermediateScore({ myTotal, botTotal, roundsPlayed, onContinue }: { myTotal: number, botTotal: number, roundsPlayed: number, onContinue: () => void }) {
-  return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-      <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
-        <div style={{ fontSize: '42px', marginBottom: '16px' }}>📊</div>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>NACH {roundsPlayed} RUNDEN</h2>
-        <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>ZWISCHENSTAND</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '32px' }}>
-          <div style={{ backgroundColor: '#FDFAF5', border: '2px solid #C9B99A', padding: '20px 12px', borderRadius: '4px' }}>
-            <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
-            <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotal}</div>
-            <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * QUESTIONS_PER_ROUND} richtig</div>
-          </div>
-          <div style={{ backgroundColor: '#FDFAF5', border: '2px solid #C9B99A', padding: '20px 12px', borderRadius: '4px' }}>
-            <div style={{ fontSize: '20px', marginBottom: '6px' }}>🤖</div>
-            <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>GEGNER</div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
-            <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * QUESTIONS_PER_ROUND} richtig</div>
-          </div>
-        </div>
-        <button style={btnPrimary} onClick={onContinue}>Weiter</button>
-      </div>
-    </div>
-  );
-}
 
 // BOT-DUELL
 function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
