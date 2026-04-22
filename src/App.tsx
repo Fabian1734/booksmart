@@ -1183,8 +1183,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
     else if (tab === 'leaderboard') loadLeaderboard();
     else loadMyDuels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, selectedCategory]);
-
+  }, [tab]);
   const loadMyStats = async () => {
     setLoading(true);
     // Load all played duels for this user
