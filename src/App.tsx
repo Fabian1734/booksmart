@@ -2044,6 +2044,17 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
   };
 
   const handleRoundComplete = async (userAnswers: boolean[], _bot: any, selectedAnswers: string[]) => {
+    // Optimistic update — UI reagiert sofort
+    const optimisticRoundsData = [...roundsData];
+    const optIdx = optimisticRoundsData.findIndex((r: any) => r.round === currentRoundInfo?.round);
+    if (optIdx !== -1) {
+      optimisticRoundsData[optIdx] = {
+        ...optimisticRoundsData[optIdx],
+        [isChallenger ? 'challenger_answers' : 'opponent_answers']: userAnswers,
+        [isChallenger ? 'challenger_selections' : 'opponent_selections']: selectedAnswers,
+      };
+    }
+    setDuelData((prev: any) => ({ ...prev, rounds_data: optimisticRoundsData }));
     setLoading(true);
 
     const currentRound = currentRoundInfo.round;
