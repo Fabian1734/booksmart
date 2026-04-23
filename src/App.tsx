@@ -1455,16 +1455,88 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   const [userAnswers, setUserAnswers] = useState<boolean[]>([]);
   const [botAnswers, setBotAnswers] = useState<boolean[]>([]);
   const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
+  const [timeLeft, setTimeLeft] = useState(15);
+  const [timerActive, setTimerActive] = useState(true);
+  const [streak, setStreak] = useState(0);
+  const [showStreak, setShowStreak] = useState(false);
+  const [animateQuestion, setAnimateQuestion] = useState(false);
+  const [shakeAnswer, setShakeAnswer] = useState(false);
+  const timerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // CSS animations injected once
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @keyframes slideInRight {
+        from { opacity: 0; transform: translateX(40px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes slideInLeft {
+        from { opacity: 0; transform: translateX(-40px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        20% { transform: translateX(-8px); }
+        40% { transform: translateX(8px); }
+        60% { transform: translateX(-5px); }
+        80% { transform: translateX(5px); }
+      }
+      @keyframes popIn {
+        0% { transform: scale(0.5); opacity: 0; }
+        70% { transform: scale(1.2); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+      }
+      .slide-in { animation: slideInRight 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) both; }
+      .shake { animation: shake 0.4s ease both; }
+      .pop-in { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both; }
+      .pulse { animation: pulse 0.6s ease infinite; }
+    `;
+    style.id = 'quiz-animations';
+    if (!document.getElementById('quiz-animations')) document.head.appendChild(style);
+  }, []);
+
+  // Timer
+  React.useEffect(() => {
+    if (!timerActive || showResult) return;
+    setTimeLeft(15);
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          handleAnswer('__timeout__');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current!);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, timerActive]);
+
+  // Animate question on change
+  React.useEffect(() => {
+    setAnimateQuestion(true);
+    const t = setTimeout(() => setAnimateQuestion(false), 400);
+    return () => clearTimeout(t);
+  }, [current]);
 
   const handleAnswer = (answer: string) => {
-    if (selected) return;
+    if (selected || !timerActive) return;
+    clearInterval(timerRef.current!);
+    setTimerActive(false);
     setSelected(answer);
 
     setTimeout(() => {
       const q = questions[current];
       const optionKeys = q.type === 'true_false' ? ['Wahr', 'Falsch'] : ['A', 'B', 'C', 'D'];
-      const userIsCorrect = answer === q.correct_answer;
-      
+      const isTimeout = answer === '__timeout__';
+      const userIsCorrect = !isTimeout && answer === q.correct_answer;
+
       let bAnswer: string | null = null;
       let botIsCorrect = false;
       if (bot) {
@@ -1472,27 +1544,42 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
         botIsCorrect = bAnswer === q.correct_answer;
         setBotAnswer(bAnswer);
       }
-      
+
+      // Streak
+      if (userIsCorrect) {
+        const newStreak = streak + 1;
+        setStreak(newStreak);
+        if (newStreak >= 2) {
+          setShowStreak(true);
+          setTimeout(() => setShowStreak(false), 1500);
+        }
+      } else {
+        setStreak(0);
+        if (!isTimeout) setShakeAnswer(true);
+        setTimeout(() => setShakeAnswer(false), 500);
+      }
+
       setShowResult(true);
-      setUserAnswers(prev => [...prev, userIsCorrect]);
-      if (bot) setBotAnswers(prev => [...prev, botIsCorrect]);
-      setSelectedAnswers(prev => [...prev, answer]);
+      const newUserAnswers = [...userAnswers, userIsCorrect];
+      const newBotAnswers = bot ? [...botAnswers, botIsCorrect] : botAnswers;
+      const newSelectedAnswers = [...selectedAnswers, isTimeout ? '' : answer];
+      setUserAnswers(newUserAnswers);
+      if (bot) setBotAnswers(newBotAnswers);
+      setSelectedAnswers(newSelectedAnswers);
 
       setTimeout(() => {
         if (current + 1 >= questions.length) {
-          onRoundComplete(
-            [...userAnswers, userIsCorrect],
-            bot ? [...botAnswers, botIsCorrect] : null,
-            [...selectedAnswers, answer]
-          );
+          onRoundComplete(newUserAnswers, bot ? newBotAnswers : null, newSelectedAnswers);
         } else {
           setCurrent(c => c + 1);
           setSelected(null);
           setBotAnswer(null);
           setShowResult(false);
+          setTimerActive(true);
+          setShakeAnswer(false);
         }
       }, 1500);
-    }, 1000);
+    }, 300);
   };
 
   const q = questions[current];
@@ -1500,45 +1587,82 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
     ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
     : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
 
+  const timerPct = (timeLeft / 15) * 100;
+  const timerColor = timeLeft > 8 ? '#4CAF50' : timeLeft > 4 ? '#FF9800' : '#E53935';
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
+      {/* Streak Banner */}
+      {showStreak && (
+        <div className="pop-in" style={{ position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#FF9800', color: 'white', padding: '10px 24px', borderRadius: '24px', fontSize: '16px', fontWeight: 'bold', zIndex: 999, whiteSpace: 'nowrap', boxShadow: '0 4px 16px rgba(255,152,0,0.4)' }}>
+          🔥 {streak}x Streak!
+        </div>
+      )}
+
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingTop: '12px' }}>
-          <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>RUNDE {roundNumber} VON {totalRounds}</span>
-          <span style={{ color: colors.muted, fontSize: '12px' }}>{current + 1}/{questions.length}</span>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingTop: '12px' }}>
+          <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', fontFamily: fontBody }}>RUNDE {roundNumber} VON {totalRounds}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {streak >= 2 && <span style={{ fontSize: '13px', color: '#FF9800', fontWeight: 'bold' }}>🔥 {streak}</span>}
+            <span style={{ color: timerColor, fontSize: '15px', fontWeight: 'bold', minWidth: '28px', textAlign: 'right', transition: 'color 0.3s' }}>{timeLeft}s</span>
+          </div>
         </div>
-        <div style={{ height: '4px', backgroundColor: colors.light, borderRadius: '2px', marginBottom: '28px' }}>
-          <div style={{ height: '4px', backgroundColor: colors.primary, borderRadius: '2px', width: `${((current + 1) / questions.length) * 100}%`, transition: 'width 0.3s' }} />
+
+        {/* Timer bar */}
+        <div style={{ height: '4px', backgroundColor: colors.light, borderRadius: '2px', marginBottom: '8px', overflow: 'hidden' }}>
+          <div style={{ height: '4px', backgroundColor: timerColor, borderRadius: '2px', width: `${timerPct}%`, transition: 'width 1s linear, background-color 0.3s' }} />
         </div>
-        <p style={{ fontSize: 'clamp(16px, 4vw, 20px)', color: colors.text, lineHeight: '1.6', marginBottom: '24px' }}>{q.question_text}</p>
+
+        {/* Progress dots */}
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '28px' }}>
+          {questions.map((_, i) => (
+            <div key={i} style={{ flex: 1, height: '3px', borderRadius: '2px', backgroundColor: i < current ? colors.primary : i === current ? colors.primary : colors.light, opacity: i < current ? 0.4 : 1, transition: 'background-color 0.3s' }} />
+          ))}
+        </div>
+
+        {/* Question */}
+        <div className={animateQuestion ? 'slide-in' : ''}>
+          <p style={{ fontSize: 'clamp(17px, 4vw, 22px)', color: colors.text, lineHeight: '1.6', marginBottom: '28px', fontFamily: fontDisplay, fontWeight: '700' }}>{q.question_text}</p>
+        </div>
+
+        {/* Options */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {options.map(opt => {
             const isCorrect = opt.key === q.correct_answer;
             const isUserSelected = opt.key === selected;
             const isBotSelected = opt.key === botAnswer;
-            let bg = '#FDFAF5', border = '1px solid #C9B99A', color = colors.text;
-            if (isUserSelected && !showResult) { bg = '#E8DFD0'; border = '2px solid ' + colors.primary; }
+            let bg = '#FDFAF5', border = `1px solid #C9B99A`, color = colors.text;
+            if (isUserSelected && !showResult) { bg = '#E8DFD0'; border = `2px solid ${colors.primary}`; }
             if (showResult) {
-              if (isCorrect) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; color = '#2E7D32'; }
-              else if (isUserSelected) { bg = '#FDECEA'; border = '1px solid #E53935'; color = '#B71C1C'; }
+              if (isCorrect) { bg = '#E8F5E9'; border = '2px solid #4CAF50'; color = '#2E7D32'; }
+              else if (isUserSelected) { bg = '#FDECEA'; border = '2px solid #E53935'; color = '#B71C1C'; }
             }
             return (
-              <button key={opt.key} onClick={() => handleAnswer(opt.key)} style={{
-                padding: '14px 16px', backgroundColor: bg, border, color,
-                fontSize: 'clamp(14px, 3.5vw, 16px)', fontFamily: 'Helvetica, Arial, sans-serif',
-                cursor: selected ? 'default' : 'pointer', borderRadius: '4px',
-                textAlign: 'left', minHeight: '52px', WebkitTapHighlightColor: 'transparent',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
+              <button
+                key={opt.key}
+                onClick={() => handleAnswer(opt.key)}
+                className={showResult && isUserSelected && !isCorrect && shakeAnswer ? 'shake' : showResult && isCorrect ? 'pulse' : ''}
+                style={{
+                  padding: '16px', backgroundColor: bg, border, color,
+                  fontSize: 'clamp(14px, 3.5vw, 16px)', fontFamily: fontBody,
+                  cursor: selected ? 'default' : 'pointer', borderRadius: '8px',
+                  textAlign: 'left', minHeight: '54px', WebkitTapHighlightColor: 'transparent',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  transition: 'background-color 0.2s, border-color 0.2s, transform 0.1s',
+                  transform: isUserSelected && !showResult ? 'scale(0.98)' : 'scale(1)',
+                  boxShadow: isUserSelected && !showResult ? '0 2px 8px rgba(107,30,46,0.15)' : 'none',
+                }}
+              >
                 <span style={{ flex: 1, paddingRight: '8px' }}>
-                  <span style={{ fontWeight: 'bold', marginRight: '10px' }}>{opt.key}.</span>{opt.label}
+                  <span style={{ fontWeight: '600', marginRight: '10px', opacity: 0.6 }}>{opt.key}.</span>{opt.label}
                 </span>
-                {showResult && bot && (isUserSelected || isBotSelected) && (
-                  <span style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                    {isUserSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>👤</span>}
-                    {isBotSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>{bot.emoji}</span>}
-                  </span>
-                )}
+                <span style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                  {showResult && isCorrect && <span style={{ fontSize: '18px' }}>✓</span>}
+                  {showResult && isUserSelected && !isCorrect && <span style={{ fontSize: '18px' }}>✗</span>}
+                  {showResult && bot && isUserSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>👤</span>}
+                  {showResult && bot && isBotSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>{bot.emoji}</span>}
+                </span>
               </button>
             );
           })}
