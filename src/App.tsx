@@ -2305,8 +2305,7 @@ function UserDuelCategorySelect({ opponent, userId, onBack, onStart }: { opponen
 }
 
 
-function Profile({ userId, onChallenge }: { userId: string, onChallenge: (opp: any) => void }) {
-  const [profile, setProfile] = useState<any>(null);
+function Profile({ userId, onChallenge, onLogout }: { userId: string, onChallenge: (opp: any) => void, onLogout: () => void }) {  const [profile, setProfile] = useState<any>(null);
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [searchUsername, setSearchUsername] = useState('');
@@ -2435,7 +2434,15 @@ function Profile({ userId, onChallenge }: { userId: string, onChallenge: (opp: a
           );
         })}
       </div>
-    </div>
+
+<div style={{ marginTop: '32px' }}>
+  <button onClick={onLogout} style={{ ...btnSecondary, color: '#E53935', borderColor: '#E53935' }}>
+    Abmelden
+  </button>
+</div>
+</div>
+);
+}
   );
 }
 
@@ -2553,7 +2560,6 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
               🔔
               {unreadCount > 0 && <span style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: '#E53935', color: 'white', fontSize: '10px', fontWeight: 'bold', borderRadius: '50%', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unreadCount}</span>}
             </button>
-            <button onClick={onLogout} style={{ background: 'none', border: '1px solid rgba(245,240,232,0.3)', color: '#F5F0E8', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '11px', padding: '5px 10px', borderRadius: '2px', letterSpacing: '1px' }}>ABMELDEN</button>
           </div>
         </div>
       </div>
@@ -2649,6 +2655,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
           <Profile
             userId={user.id}
             onChallenge={(opp) => { setChallengingUser(opp); setSubView('userDuelCategory'); }}
+            onLogout={onLogout}
           />
         )}
       </div>
