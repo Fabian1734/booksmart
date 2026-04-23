@@ -849,7 +849,7 @@ function Notifications({ userId, onBack }: { userId: string, onBack: () => void 
     </div>
   );
 }
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function UserSearch({ userId, onBack, onChallenge }: { userId: string, onBack: () => void, onChallenge: (opponent: any) => void }) {
   const [searchUsername, setSearchUsername] = useState('');
   const [searchResult, setSearchResult] = useState<any>(null);
@@ -2138,7 +2138,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     </div>
   );
 }
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function DuelsList({ userId, onOpenDuel, onBack, onNewUserDuel }: { userId: string, onOpenDuel: (duel: any) => void, onBack: () => void, onNewUserDuel: () => void }) {
   const [duels, setDuels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
