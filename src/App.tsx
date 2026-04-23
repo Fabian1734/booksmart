@@ -2439,10 +2439,8 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
   <button onClick={onLogout} style={{ ...btnSecondary, color: '#E53935', borderColor: '#E53935' }}>
     Abmelden
   </button>
+  </div>
 </div>
-</div>
-);
-}
   );
 }
 
