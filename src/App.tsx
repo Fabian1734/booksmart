@@ -2440,7 +2440,7 @@ function Profile({ userId, onChallenge }: { userId: string, onChallenge: (opp: a
 }
 
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
-  const [tab, setTab] = useState<'home' | 'stats' | 'profile'>('home');
+  const [tab, setTab] = useState<'home' | 'stats' | 'profile' | 'admin'>('home');
   const [subView, setSubView] = useState<'none' | 'selectCategoryBot' | 'selectOpponentBot' | 'botDuel' | 'userDuel' | 'userDuelCategory' | 'notifications'>('none');
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
@@ -2634,15 +2634,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
               </div>
             </section>
 
-            {isAdmin && (
-              <section>
-                <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>ADMIN</div>
-                <div onClick={() => { /* navigate to admin */ }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '20px' }}>⚙️</span>
-                  <AdminImport onBack={() => {}} />
-                </div>
-              </section>
-            )}
+            
           </div>
         )}
 
