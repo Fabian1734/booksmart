@@ -2649,6 +2649,9 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
         {/* STATS TAB */}
         {tab === 'stats' && <Highscores onBack={() => setTab('home')} userId={user.id} />}
 
+        {/* ADMIN TAB */}
+        {tab === 'admin' && isAdmin && <AdminImport onBack={() => setTab('home')} />}
+
         {/* PROFILE TAB */}
         {tab === 'profile' && (
           <Profile
@@ -2660,10 +2663,11 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
 
       {/* Bottom Nav */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: `${NAV_HEIGHT}px`, backgroundColor: '#FDFAF5', borderTop: `1px solid ${colors.light}`, display: 'flex', zIndex: 200 }}>
-        {([
+      {([
           { id: 'home', label: 'Start', icon: '🏠' },
           { id: 'stats', label: 'Statistik', icon: '📊' },
           { id: 'profile', label: 'Profil', icon: '👤' },
+          ...(isAdmin ? [{ id: 'admin', label: 'Admin', icon: '⚙️' }] : []),
         ] as const).map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); setSubView('none'); }} style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', color: tab === t.id ? colors.primary : colors.muted, fontFamily: 'Helvetica, Arial, sans-serif' }}>
             <span style={{ fontSize: '22px' }}>{t.icon}</span>
