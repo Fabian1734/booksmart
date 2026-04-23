@@ -10,6 +10,15 @@ const colors = {
   light: '#E8DFD0',
 };
 
+const fontDisplay = "'Playfair Display', Georgia, serif";
+const fontBody = "'DM Sans', Helvetica, Arial, sans-serif";
+
+function avatarColor(username: string): string {
+  const colors = ['#6B1E2E', '#1E4D6B', '#2E6B1E', '#6B4F1E', '#4B1E6B', '#1E6B5B', '#6B1E4F'];
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '14px 16px',
@@ -17,7 +26,7 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #C9B99A',
   backgroundColor: '#FDFAF5',
   color: '#3D2B1F',
-  fontFamily: 'Helvetica, Arial, sans-serif',
+  fontFamily: fontBody,
   boxSizing: 'border-box',
   borderRadius: '2px',
   marginBottom: '12px',
@@ -35,7 +44,7 @@ const btnPrimary: React.CSSProperties = {
   cursor: 'pointer',
   letterSpacing: '2px',
   textTransform: 'uppercase',
-  fontFamily: 'Helvetica, Arial, sans-serif',
+  fontFamily: fontBody,
   borderRadius: '2px',
   marginBottom: '12px',
   WebkitTapHighlightColor: 'transparent',
@@ -2375,7 +2384,7 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
     <div style={{ padding: '24px 16px', maxWidth: '600px', margin: '0 auto' }}>
       {/* Profil */}
       <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: colors.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F5F0E8', fontSize: '22px', fontWeight: 'bold', flexShrink: 0 }}>
+      <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: avatarColor(profile?.username || ''), display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', fontSize: '26px', fontWeight: 'bold', flexShrink: 0, fontFamily: fontDisplay, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
           {profile?.username?.[0]?.toUpperCase() || '?'}
         </div>
         <div>
@@ -2552,8 +2561,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       {/* Header */}
       <div style={{ backgroundColor: colors.primary, padding: '14px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ color: '#F5F0E8', letterSpacing: '3px', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>BOOKSMART</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h1 style={{ color: '#F5F0E8', letterSpacing: '2px', margin: 0, fontSize: '20px', fontWeight: '900', fontFamily: fontDisplay }}>BOOKSMART</h1>          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button onClick={() => setSubView('notifications')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', position: 'relative', padding: '6px' }}>
               🔔
               {unreadCount > 0 && <span style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: '#E53935', color: 'white', fontSize: '10px', fontWeight: 'bold', borderRadius: '50%', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unreadCount}</span>}
@@ -2747,8 +2755,7 @@ function App() {
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
         <div style={{ fontSize: '48px', marginBottom: '8px' }}>📚</div>
-        <h1 style={{ fontSize: 'clamp(36px, 10vw, 52px)', fontWeight: 'bold', color: colors.primary, margin: '0 0 8px 0', letterSpacing: '2px' }}>BOOKSMART</h1>
-        <p style={{ fontSize: 'clamp(12px, 3vw, 16px)', color: colors.muted, letterSpacing: '4px', textTransform: 'uppercase', marginBottom: '48px' }}>Wissen aus Büchern</p>
+        <h1 style={{ fontSize: 'clamp(36px, 10vw, 52px)', fontWeight: '900', color: colors.primary, margin: '0 0 8px 0', letterSpacing: '2px', fontFamily: fontDisplay }}>BOOKSMART</h1>        <p style={{ fontSize: 'clamp(12px, 3vw, 16px)', color: colors.muted, letterSpacing: '4px', textTransform: 'uppercase', marginBottom: '48px' }}>Wissen aus Büchern</p>
         <button style={btnPrimary} onClick={() => setMode('login')}>Anmelden</button>
         <button style={btnSecondary} onClick={() => setMode('register')}>Registrieren</button>
         <p style={{ marginTop: '48px', fontSize: '12px', color: '#A0896E', letterSpacing: '1px', lineHeight: '1.8' }}>Geschichte der Schweiz · Philosophie & Denker · Weltgeschichte</p>
