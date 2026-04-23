@@ -2304,15 +2304,151 @@ function UserDuelCategorySelect({ opponent, userId, onBack, onStart }: { opponen
   );
 }
 
+
+function Profile({ userId, onChallenge }: { userId: string, onChallenge: (opp: any) => void }) {
+  const [profile, setProfile] = useState<any>(null);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [searchUsername, setSearchUsername] = useState('');
+  const [searchResult, setSearchResult] = useState<any>(null);
+  const [searchMsg, setSearchMsg] = useState('');
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    supabase.from('profiles').select('*').eq('id', userId).single().then(({ data }) => setProfile(data));
+    loadFriends();
+    loadPendingRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  const loadFriends = async () => {
+    const { data } = await supabase
+      .from('friendships')
+      .select('*, requester:profiles!friendships_requester_id_fkey(id, username), addressee:profiles!friendships_addressee_id_fkey(id, username)')
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+      .eq('status', 'accepted');
+    setFriends(data || []);
+  };
+
+  const loadPendingRequests = async () => {
+    const { data } = await supabase
+      .from('friendships')
+      .select('*, requester:profiles!friendships_requester_id_fkey(id, username)')
+      .eq('addressee_id', userId)
+      .eq('status', 'pending');
+    setPendingRequests(data || []);
+  };
+
+  const handleSearch = async () => {
+    if (!searchUsername.trim()) return;
+    setSearching(true);
+    setSearchMsg('');
+    const { data, error } = await supabase.from('profiles').select('id, username').ilike('username', searchUsername.trim()).single();
+    if (error || !data) { setSearchMsg('Kein User gefunden.'); setSearchResult(null); }
+    else if (data.id === userId) { setSearchMsg('Das bist du selbst!'); setSearchResult(null); }
+    else setSearchResult(data);
+    setSearching(false);
+  };
+
+  const sendFriendRequest = async () => {
+    if (!searchResult) return;
+    const { data: existing } = await supabase.from('friendships').select('*').or(`and(requester_id.eq.${userId},addressee_id.eq.${searchResult.id}),and(requester_id.eq.${searchResult.id},addressee_id.eq.${userId})`);
+    if (existing && existing.length > 0) { setSearchMsg('Anfrage bereits vorhanden oder bereits befreundet.'); return; }
+    await supabase.from('friendships').insert({ requester_id: userId, addressee_id: searchResult.id, status: 'pending' });
+    const { data: me } = await supabase.from('profiles').select('username').eq('id', userId).single();
+    await supabase.from('notifications').insert({ user_id: searchResult.id, type: 'friend_request', title: 'Neue Freundschaftsanfrage', message: `${me?.username} möchte mit dir befreundet sein` });
+    setSearchMsg('✅ Anfrage gesendet!');
+    setSearchResult(null);
+    setSearchUsername('');
+  };
+
+  const acceptRequest = async (id: string) => {
+    await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id);
+    loadFriends(); loadPendingRequests();
+  };
+
+  const rejectRequest = async (id: string) => {
+    await supabase.from('friendships').delete().eq('id', id);
+    loadPendingRequests();
+  };
+
+  return (
+    <div style={{ padding: '24px 16px', maxWidth: '600px', margin: '0 auto' }}>
+      {/* Profil */}
+      <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: colors.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F5F0E8', fontSize: '22px', fontWeight: 'bold', flexShrink: 0 }}>
+          {profile?.username?.[0]?.toUpperCase() || '?'}
+        </div>
+        <div>
+          <div style={{ fontSize: '18px', color: colors.text, fontWeight: 'bold' }}>{profile?.username}</div>
+          <div style={{ fontSize: '13px', color: colors.muted }}>{profile?.email}</div>
+        </div>
+      </div>
+
+      {/* Spieler suchen */}
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '10px' }}>SPIELER SUCHEN</div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Username" value={searchUsername} onChange={e => setSearchUsername(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
+          <button onClick={handleSearch} disabled={searching} style={{ ...btnPrimary, width: 'auto', padding: '0 20px', marginBottom: 0, fontSize: '13px' }}>Suchen</button>
+        </div>
+        {searchMsg && <div style={{ fontSize: '13px', color: searchMsg.startsWith('✅') ? '#4CAF50' : '#E53935', marginTop: '8px' }}>{searchMsg}</div>}
+        {searchResult && (
+          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '15px', color: colors.text }}>{searchResult.username}</span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={sendFriendRequest} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Freund</button>
+              <button onClick={() => onChallenge(searchResult)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.primary, border: `1px solid ${colors.primary}`, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Duell</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Anfragen */}
+      {pendingRequests.length > 0 && (
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '10px' }}>ANFRAGEN ({pendingRequests.length})</div>
+          {pendingRequests.map(req => (
+            <div key={req.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '14px', color: colors.text }}>{req.requester.username}</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => acceptRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Annehmen</button>
+                <button onClick={() => rejectRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.muted, border: `1px solid ${colors.muted}`, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Ablehnen</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Freunde */}
+      <div>
+        <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '10px' }}>FREUNDE ({friends.length})</div>
+        {friends.length === 0 ? (
+          <p style={{ color: colors.muted, fontSize: '14px' }}>Noch keine Freunde</p>
+        ) : friends.map(f => {
+          const friend = f.requester.id === userId ? f.addressee : f.requester;
+          return (
+            <div key={f.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '14px', color: colors.text }}>{friend.username}</span>
+              <button onClick={() => onChallenge(friend)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.primary, border: `1px solid ${colors.primary}`, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Duell</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
-  const [view, setView] = useState<'home' | 'selectCategoryBot' | 'selectOpponentBot' | 'botDuel' | 'userDuel' | 'userDuelsList' | 'userSearch' | 'userDuelCategory' | 'highscores' | 'admin' | 'notifications'>('home');
+  const [tab, setTab] = useState<'home' | 'stats' | 'profile'>('home');
+  const [subView, setSubView] = useState<'none' | 'selectCategoryBot' | 'selectOpponentBot' | 'botDuel' | 'userDuel' | 'userDuelCategory' | 'notifications'>('none');
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [activeDuel, setActiveDuel] = useState<any>(null);
   const [challengingUser, setChallengingUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [, setActiveDuelsCount] = useState(0);  const [myActiveDuels, setMyActiveDuels] = useState<any[]>([]);
+  const [myActiveDuels, setMyActiveDuels] = useState<any[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
 
   const loadUnreadCount = async () => {
@@ -2329,15 +2465,10 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       .neq('status', 'completed')
       .order('created_at', { ascending: false });
     setMyActiveDuels(data || []);
-    setActiveDuelsCount((data || []).filter((d: any) => d.current_turn_user_id === user.id).length);
   };
 
   const loadOnlineUsers = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, username')
-      .neq('id', user.id)
-      .limit(10);
+    const { data } = await supabase.from('profiles').select('id, username').neq('id', user.id).limit(10);
     setOnlineUsers(data || []);
   };
 
@@ -2354,34 +2485,30 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
 
   const startBotDuel = async (bot: any) => {
     const { data } = await supabase.from('duels').insert({
-      challenger_id: user.id,
-      opponent_is_bot: true,
-      bot_level: bot.level,
-      category_id: selectedCategory.id,
-      status: 'challenger_turn',
+      challenger_id: user.id, opponent_is_bot: true, bot_level: bot.level,
+      category_id: selectedCategory.id, status: 'challenger_turn',
     }).select().single();
-    if (data) { setActiveDuel(data); setView('botDuel'); }
+    if (data) { setActiveDuel(data); setSubView('botDuel'); }
   };
 
-  if (view === 'botDuel' && activeDuel) return <BotDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('home'); loadActiveDuels(); }} />;
-  if (view === 'userDuel' && activeDuel) return <UserDuelGame duel={activeDuel} userId={user.id} onFinish={() => { setActiveDuel(null); setView('home'); loadActiveDuels(); }} />;
-  if (view === 'highscores') return <Highscores onBack={() => setView('home')} userId={user.id} />;
-  if (view === 'admin') return <AdminImport onBack={() => setView('home')} />;
-  if (view === 'notifications') return <Notifications userId={user.id} onBack={() => { setView('home'); loadUnreadCount(); }} />;
-  if (view === 'userSearch') return <UserSearch userId={user.id} onBack={() => setView('home')} onChallenge={(opp) => { setChallengingUser(opp); setView('userDuelCategory'); }} />;
-  if (view === 'userDuelCategory' && challengingUser) return <UserDuelCategorySelect opponent={challengingUser} userId={user.id} onBack={() => setView('userSearch')} onStart={(duel) => { setChallengingUser(null); setActiveDuel(duel); setView('userDuel'); }} />;
-  if (view === 'userDuelsList') return <DuelsList userId={user.id} onOpenDuel={(duel) => { setActiveDuel(duel); setView('userDuel'); }} onBack={() => setView('home')} onNewUserDuel={() => setView('userSearch')} />;
+  const goHome = () => { setSubView('none'); setActiveDuel(null); loadActiveDuels(); };
 
-  if (view === 'selectOpponentBot') return (
+  // Full-screen subviews
+  if (subView === 'botDuel' && activeDuel) return <BotDuelGame duel={activeDuel} userId={user.id} onFinish={goHome} />;
+  if (subView === 'userDuel' && activeDuel) return <UserDuelGame duel={activeDuel} userId={user.id} onFinish={goHome} />;
+  if (subView === 'notifications') return <Notifications userId={user.id} onBack={() => { setSubView('none'); loadUnreadCount(); }} />;
+  if (subView === 'userDuelCategory' && challengingUser) return <UserDuelCategorySelect opponent={challengingUser} userId={user.id} onBack={() => setSubView('none')} onStart={(duel) => { setChallengingUser(null); setActiveDuel(duel); setSubView('userDuel'); }} />;
+
+  if (subView === 'selectOpponentBot') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={() => setView('selectCategoryBot')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Wähle einen Bot</h2>
+        <button onClick={() => setSubView('selectCategoryBot')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '6px', fontWeight: 'normal' }}>Wähle einen Bot</h2>
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>{selectedCategory?.name}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {bots.map(bot => (
             <div key={bot.name} onClick={() => startBotDuel(bot)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ fontSize: '28px', flexShrink: 0 }}>{bot.emoji}</div>
+              <div style={{ fontSize: '28px' }}>{bot.emoji}</div>
               <div>
                 <div style={{ color: colors.text, fontSize: '15px', marginBottom: '2px' }}>{bot.name}</div>
                 <div style={{ color: colors.muted, fontSize: '12px' }}>{bot.level === 1 ? 'Einfach — ca. 30% richtig' : bot.level === 2 ? 'Mittel — ca. 55% richtig' : 'Schwer — ca. 80% richtig'}</div>
@@ -2393,14 +2520,14 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     </div>
   );
 
-  if (view === 'selectCategoryBot') return (
+  if (subView === 'selectCategoryBot') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={() => setView('home')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
+        <button onClick={() => setSubView('none')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {categories.map(cat => (
-            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setView('selectOpponentBot'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setSubView('selectOpponentBot'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px' }}>
               <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
             </div>
           ))}
@@ -2409,133 +2536,146 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     </div>
   );
 
-  // HOME VIEW
   const myTurnDuels = myActiveDuels.filter(d => d.current_turn_user_id === user.id);
   const waitingDuels = myActiveDuels.filter(d => d.current_turn_user_id !== user.id);
 
+  const NAV_HEIGHT = 64;
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif', paddingBottom: `${NAV_HEIGHT}px` }}>
+
       {/* Header */}
-      <div style={{ backgroundColor: colors.primary, padding: '16px', position: 'sticky', top: 0, zIndex: 100 }}>
+      <div style={{ backgroundColor: colors.primary, padding: '14px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ color: '#F5F0E8', letterSpacing: '3px', margin: 0, fontSize: 'clamp(16px, 4vw, 22px)', fontWeight: 'bold' }}>BOOKSMART</h1>
+          <h1 style={{ color: '#F5F0E8', letterSpacing: '3px', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>BOOKSMART</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button onClick={() => setView('notifications')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', position: 'relative', padding: '6px' }}>
+            <button onClick={() => setSubView('notifications')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', position: 'relative', padding: '6px' }}>
               🔔
               {unreadCount > 0 && <span style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: '#E53935', color: 'white', fontSize: '10px', fontWeight: 'bold', borderRadius: '50%', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unreadCount}</span>}
             </button>
-            <button onClick={onLogout} style={{ background: 'none', border: '1px solid rgba(245,240,232,0.3)', color: '#F5F0E8', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '12px', padding: '6px 12px', borderRadius: '2px', letterSpacing: '1px' }}>ABMELDEN</button>
+            <button onClick={onLogout} style={{ background: 'none', border: '1px solid rgba(245,240,232,0.3)', color: '#F5F0E8', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '11px', padding: '5px 10px', borderRadius: '2px', letterSpacing: '1px' }}>ABMELDEN</button>
           </div>
         </div>
       </div>
 
-      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+      {/* Tab Content */}
+      <div style={{ maxWidth: '700px', margin: '0 auto' }}>
 
-        {/* AKTUELLE DUELLE */}
-        <section>
-          <h2 style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '12px', margin: '0 0 12px 0' }}>Aktuelle Duelle</h2>
-          {myActiveDuels.length === 0 ? (
-            <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '20px', textAlign: 'center' }}>
-              <p style={{ color: colors.muted, fontSize: '14px', margin: 0 }}>Keine laufenden Duelle</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {myTurnDuels.map(d => {
-                const isChallenger = d.challenger_id === user.id;
-                const opponent = isChallenger ? d.opponent : d.challenger;
-                const roundsPlayed = (d.rounds_data || []).length;
-                return (
-                  <div key={d.id} onClick={() => { setActiveDuel(d); setView('userDuel'); }} style={{ backgroundColor: '#FDFAF5', border: `2px solid ${colors.primary}`, borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold', marginBottom: '2px' }}>vs {opponent?.username}</div>
-                      <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name} · Runde {roundsPlayed + 1} von {TOTAL_ROUNDS}</div>
-                    </div>
-                    <div style={{ backgroundColor: colors.primary, color: '#F5F0E8', fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '2px', letterSpacing: '1px', whiteSpace: 'nowrap' }}>DU BIST DRAN</div>
-                  </div>
-                );
-              })}
-              {waitingDuels.map(d => {
-                const isChallenger = d.challenger_id === user.id;
-                const opponent = isChallenger ? d.opponent : d.challenger;
-                const roundsPlayed = (d.rounds_data || []).length;
-                return (
-                  <div key={d.id} onClick={() => { setActiveDuel(d); setView('userDuel'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '15px', color: colors.text, marginBottom: '2px' }}>vs {opponent?.username}</div>
-                      <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name} · Runde {roundsPlayed + 1} von {TOTAL_ROUNDS}</div>
-                    </div>
-                    <div style={{ fontSize: '12px', color: colors.muted }}>wartet...</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+        {/* HOME TAB */}
+        {tab === 'home' && (
+          <div style={{ padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
-        {/* NEUES QUIZ STARTEN */}
-        <section>
-          <h2 style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', textTransform: 'uppercase', margin: '0 0 12px 0' }}>Neues Quiz starten</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div onClick={() => setView('selectCategoryBot')} style={{ backgroundColor: colors.primary, borderRadius: '4px', padding: '18px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ fontSize: '24px' }}>🤖</div>
-              <div>
-                <div style={{ color: '#F5F0E8', fontSize: '15px', fontWeight: 'bold', marginBottom: '2px' }}>Duell vs Bot</div>
-                <div style={{ color: '#C9A0AC', fontSize: '12px' }}>Spiele gegen eine KI auf deinem Level</div>
-              </div>
-            </div>
-            <div onClick={() => setView('userSearch')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '18px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ fontSize: '24px' }}>⚔️</div>
-              <div>
-                <div style={{ color: colors.text, fontSize: '15px', fontWeight: 'bold', marginBottom: '2px' }}>Duell vs User</div>
-                <div style={{ color: colors.muted, fontSize: '12px' }}>Fordere einen Spieler heraus</div>
-              </div>
-            </div>
-
-            {/* Online Users */}
-            {onlineUsers.length > 0 && (
-              <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '12px 16px' }}>
-                <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '10px' }}>SPIELER</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {onlineUsers.slice(0, 5).map(u => (
-                    <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '14px', color: colors.text }}>{u.username}</span>
-                      <button onClick={() => { setChallengingUser(u); setView('userDuelCategory'); }} style={{ fontSize: '11px', padding: '4px 10px', backgroundColor: 'transparent', border: `1px solid ${colors.primary}`, color: colors.primary, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '1px' }}>HERAUSFORDERN</button>
-                    </div>
-                  ))}
+            <section>
+              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>AKTUELLE DUELLE</div>
+              {myActiveDuels.length === 0 ? (
+                <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '20px', textAlign: 'center' }}>
+                  <p style={{ color: colors.muted, fontSize: '14px', margin: 0 }}>Keine laufenden Duelle</p>
                 </div>
-              </div>
-            )}
-          </div>
-        </section>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {myTurnDuels.map(d => {
+                    const isChallenger = d.challenger_id === user.id;
+                    const opponent = isChallenger ? d.opponent : d.challenger;
+                    return (
+                      <div key={d.id} onClick={() => { setActiveDuel(d); setSubView('userDuel'); }} style={{ backgroundColor: '#FDFAF5', border: `2px solid ${colors.primary}`, borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold', marginBottom: '2px' }}>vs {opponent?.username}</div>
+                          <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name}</div>
+                        </div>
+                        <div style={{ backgroundColor: colors.primary, color: '#F5F0E8', fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '2px', letterSpacing: '1px' }}>DU BIST DRAN</div>
+                      </div>
+                    );
+                  })}
+                  {waitingDuels.map(d => {
+                    const isChallenger = d.challenger_id === user.id;
+                    const opponent = isChallenger ? d.opponent : d.challenger;
+                    return (
+                      <div key={d.id} onClick={() => { setActiveDuel(d); setSubView('userDuel'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '15px', color: colors.text, marginBottom: '2px' }}>vs {opponent?.username}</div>
+                          <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name}</div>
+                        </div>
+                        <div style={{ fontSize: '12px', color: colors.muted }}>wartet...</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
 
-        {/* STATISTIK + FREUNDE + ADMIN */}
-        <section>
-          <h2 style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', textTransform: 'uppercase', margin: '0 0 12px 0' }}>Mehr</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <div onClick={() => setView('highscores')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', borderRadius: '4px', cursor: 'pointer' }}>
-              <div style={{ fontSize: '24px', marginBottom: '8px' }}>📊</div>
-              <div style={{ color: colors.text, fontSize: '14px', fontWeight: 'bold', marginBottom: '2px' }}>Statistik</div>
-              <div style={{ color: colors.muted, fontSize: '12px' }}>Ranglisten & Duelle</div>
-            </div>
-            <div onClick={() => setView('userSearch')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', borderRadius: '4px', cursor: 'pointer' }}>
-              <div style={{ fontSize: '24px', marginBottom: '8px' }}>👥</div>
-              <div style={{ color: colors.text, fontSize: '14px', fontWeight: 'bold', marginBottom: '2px' }}>Freunde</div>
-              <div style={{ color: colors.muted, fontSize: '12px' }}>Anfragen & Liste</div>
-            </div>
+            <section>
+              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>NEUES QUIZ STARTEN</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div onClick={() => setSubView('selectCategoryBot')} style={{ backgroundColor: colors.primary, borderRadius: '4px', padding: '18px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{ fontSize: '24px' }}>🤖</div>
+                  <div>
+                    <div style={{ color: '#F5F0E8', fontSize: '15px', fontWeight: 'bold', marginBottom: '2px' }}>Duell vs Bot</div>
+                    <div style={{ color: '#C9A0AC', fontSize: '12px' }}>Spiele gegen eine KI</div>
+                  </div>
+                </div>
+                <div onClick={() => { setChallengingUser(null); setSubView('userDuelCategory'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '18px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{ fontSize: '24px' }}>⚔️</div>
+                  <div>
+                    <div style={{ color: colors.text, fontSize: '15px', fontWeight: 'bold', marginBottom: '2px' }}>Duell vs User</div>
+                    <div style={{ color: colors.muted, fontSize: '12px' }}>Fordere einen Spieler heraus</div>
+                  </div>
+                </div>
+                {onlineUsers.length > 0 && (
+                  <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '12px 16px' }}>
+                    <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '10px' }}>SPIELER</div>
+                    {onlineUsers.slice(0, 5).map(u => (
+                      <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+                        <span style={{ fontSize: '14px', color: colors.text }}>{u.username}</span>
+                        <button onClick={() => { setChallengingUser(u); setSubView('userDuelCategory'); }} style={{ fontSize: '11px', padding: '4px 10px', backgroundColor: 'transparent', border: `1px solid ${colors.primary}`, color: colors.primary, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '1px' }}>HERAUSFORDERN</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
             {isAdmin && (
-              <div onClick={() => setView('admin')} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', borderRadius: '4px', cursor: 'pointer', gridColumn: 'span 2' }}>
-                <div style={{ fontSize: '24px', marginBottom: '8px' }}>⚙️</div>
-                <div style={{ color: colors.text, fontSize: '14px', fontWeight: 'bold', marginBottom: '2px' }}>Admin</div>
-                <div style={{ color: colors.muted, fontSize: '12px' }}>Fragen & Bücher verwalten</div>
-              </div>
+              <section>
+                <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>ADMIN</div>
+                <div onClick={() => { /* navigate to admin */ }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '20px' }}>⚙️</span>
+                  <AdminImport onBack={() => {}} />
+                </div>
+              </section>
             )}
           </div>
-        </section>
+        )}
 
+        {/* STATS TAB */}
+        {tab === 'stats' && <Highscores onBack={() => setTab('home')} userId={user.id} />}
+
+        {/* PROFILE TAB */}
+        {tab === 'profile' && (
+          <Profile
+            userId={user.id}
+            onChallenge={(opp) => { setChallengingUser(opp); setSubView('userDuelCategory'); }}
+          />
+        )}
+      </div>
+
+      {/* Bottom Nav */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: `${NAV_HEIGHT}px`, backgroundColor: '#FDFAF5', borderTop: `1px solid ${colors.light}`, display: 'flex', zIndex: 200 }}>
+        {([
+          { id: 'home', label: 'Start', icon: '🏠' },
+          { id: 'stats', label: 'Statistik', icon: '📊' },
+          { id: 'profile', label: 'Profil', icon: '👤' },
+        ] as const).map(t => (
+          <button key={t.id} onClick={() => { setTab(t.id); setSubView('none'); }} style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', color: tab === t.id ? colors.primary : colors.muted, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+            <span style={{ fontSize: '22px' }}>{t.icon}</span>
+            <span style={{ fontSize: '10px', letterSpacing: '1px', fontWeight: tab === t.id ? 'bold' : 'normal' }}>{t.label.toUpperCase()}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
 }
+
+
 
 function App() {
   const [mode, setMode] = useState<'home' | 'login' | 'register'>('home');
