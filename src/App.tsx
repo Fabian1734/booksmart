@@ -2829,10 +2829,12 @@ function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [totalQuestions, setTotalQuestions] = useState(0);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
     supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+    supabase.from('questions').select('*', { count: 'exact', head: true }).then(({ count }) => setTotalQuestions(count || 0));
   }, []);
 
   const handleLogin = async () => {
@@ -2890,8 +2892,10 @@ function App() {
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
         <div style={{ fontSize: '48px', marginBottom: '8px' }}>📚</div>
-        <h1 style={{ fontSize: 'clamp(36px, 10vw, 52px)', fontWeight: '900', color: colors.primary, margin: '0 0 8px 0', letterSpacing: '2px', fontFamily: fontDisplay }}>BOOKSMART</h1>        <p style={{ fontSize: 'clamp(12px, 3vw, 16px)', color: colors.muted, letterSpacing: '4px', textTransform: 'uppercase', marginBottom: '48px' }}>Wissen aus Büchern</p>
-        <button style={btnPrimary} onClick={() => setMode('login')}>Anmelden</button>
+        <h1 style={{ fontSize: 'clamp(36px, 10vw, 52px)', fontWeight: '900', color: colors.primary, margin: '0 0 8px 0', letterSpacing: '2px', fontFamily: fontDisplay }}>BOOKSMART</h1>
+        <p style={{ fontSize: 'clamp(13px, 3vw, 16px)', color: colors.muted, marginBottom: '48px', lineHeight: '1.5' }}>
+          <span style={{ fontWeight: '600', color: colors.primary }}>{totalQuestions > 0 ? totalQuestions : '...'}</span> Fragen zur Geschichte der Schweiz, Weltgeschichte und mehr.
+        </p>        <button style={btnPrimary} onClick={() => setMode('login')}>Anmelden</button>
         <button style={btnSecondary} onClick={() => setMode('register')}>Registrieren</button>
         <p style={{ marginTop: '48px', fontSize: '12px', color: '#A0896E', letterSpacing: '1px', lineHeight: '1.8' }}>Geschichte der Schweiz · Philosophie & Denker · Weltgeschichte</p>
       </div>
