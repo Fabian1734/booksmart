@@ -2588,6 +2588,19 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
   );
 }
 
+function TotalQuestionsCount() {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    supabase.from('questions').select('*', { count: 'exact', head: true }).then(({ count }) => setCount(count || 0));
+  }, []);
+  if (count === 0) return null;
+  return (
+    <p style={{ color: 'rgba(245,240,232,0.7)', fontSize: '11px', margin: '2px 0 0 0', letterSpacing: '0.5px' }}>
+      {count} Fragen · Geschichte · Weltgeschichte · mehr
+    </p>
+  );
+}
+
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   const [tab, setTab] = useState<'home' | 'stats' | 'profile' | 'admin'>('home');
   const [subView, setSubView] = useState<'none' | 'selectCategoryBot' | 'selectOpponentBot' | 'botDuel' | 'userDuel' | 'userDuelCategory' | 'notifications'>('none');
@@ -2696,7 +2709,10 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       {/* Header */}
       <div style={{ backgroundColor: colors.primary, padding: '14px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ color: '#F5F0E8', letterSpacing: '2px', margin: 0, fontSize: '20px', fontWeight: '900', fontFamily: fontDisplay }}>BOOKSMART</h1>          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h1 <div>
+          <h1 style={{ color: '#F5F0E8', letterSpacing: '2px', margin: 0, fontSize: '20px', fontWeight: '900', fontFamily: fontDisplay }}>BOOKSMART</h1>
+          <TotalQuestionsCount />
+        </div>style={{ color: '#F5F0E8', letterSpacing: '2px', margin: 0, fontSize: '20px', fontWeight: '900', fontFamily: fontDisplay }}>BOOKSMART</h1>          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button onClick={() => setSubView('notifications')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', position: 'relative', padding: '6px' }}>
               🔔
               {unreadCount > 0 && <span style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: '#E53935', color: 'white', fontSize: '10px', fontWeight: 'bold', borderRadius: '50%', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unreadCount}</span>}
