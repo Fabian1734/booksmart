@@ -82,19 +82,19 @@ async function findBestGroup(subcategoryId: string, userIds: string[]): Promise<
 
   if (!allGroups || allGroups.length === 0) return null;
 
+  // Hole alle gespielten Gruppen für diesen User
   const { data: playedData } = await supabase
     .from('played_groups')
-    .select('group_id, user_id')
+    .select('group_id')
     .in('user_id', userIds);
 
-  const playCount: Record<string, number> = {};
-  playedData?.forEach(p => {
-    playCount[p.group_id] = (playCount[p.group_id] || 0) + 1;
-  });
+  const playedGroupIds = new Set(playedData?.map(p => p.group_id) || []);
 
-  const neverPlayed = allGroups.find(g => !playCount[g.id]);
+  // Finde erste Gruppe die noch NIE gespielt wurde
+  const neverPlayed = allGroups.find(g => !playedGroupIds.has(g.id));
   if (neverPlayed) return neverPlayed;
 
+  // Alle gespielt — nimm die mit der niedrigsten group_number (älteste)
   return allGroups[0];
 }
 
@@ -2596,7 +2596,7 @@ function TotalQuestionsCount() {
   if (count === 0) return null;
   return (
     <p style={{ color: 'rgba(245,240,232,0.7)', fontSize: '11px', margin: '2px 0 0 0', letterSpacing: '0.5px' }}>
-      {count} Fragen · Geschichte · Weltgeschichte · mehr
+      {count} Fragen · Schweizer Geschichte · Weltgeschichte · mehr
     </p>
   );
 }
