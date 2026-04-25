@@ -73,7 +73,7 @@ function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: num
 }
 
 // Hilfsfunktion: Tiefste ungespielte Gruppe für einen oder zwei User
-async function findBestGroup(subcategoryId: string, userIds: string[]): Promise<{ id: string; group_number: number } | null> {
+async function findBestGroup(subcategoryId: string, userIds: string[], excludeGroupIds: string[] = []): Promise<{ id: string; group_number: number } | null> {
   const { data: allGroups } = await supabase
     .from('question_groups')
     .select('id, group_number')
@@ -82,26 +82,25 @@ async function findBestGroup(subcategoryId: string, userIds: string[]): Promise<
 
   if (!allGroups || allGroups.length === 0) return null;
 
-  const allGroupIds = allGroups.map(g => g.id);
+  const availableGroups = allGroups.filter(g => !excludeGroupIds.includes(g.id));
+  if (availableGroups.length === 0) return allGroups[0];
+
+  const allGroupIds = availableGroups.map(g => g.id);
   const { data: playedData } = await supabase
     .from('played_groups')
     .select('group_id')
     .in('user_id', userIds)
     .in('group_id', allGroupIds);
 
-  // Zähle wie oft jede Gruppe gespielt wurde
   const playCount: Record<string, number> = {};
-  allGroups.forEach(g => { playCount[g.id] = 0; });
+  availableGroups.forEach(g => { playCount[g.id] = 0; });
   playedData?.forEach(p => {
     playCount[p.group_id] = (playCount[p.group_id] || 0) + 1;
   });
 
-  // Finde minimalen Play-Count
-  const minCount = Math.min(...allGroups.map(g => playCount[g.id]));
-
-  // Erste Gruppe mit minimalem Count zurückgeben
-  const candidate = allGroups.find(g => playCount[g.id] === minCount);
-  return candidate || allGroups[0];
+  const minCount = Math.min(...availableGroups.map(g => playCount[g.id]));
+  const candidate = availableGroups.find(g => playCount[g.id] === minCount);
+  return candidate || availableGroups[0];
 }
 
 interface CSVQuestion {
@@ -1716,7 +1715,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   const [phase, setPhase] = useState<'selectSub' | 'announcement' | 'playing' | 'intermediate'>('selectSub');
   const [availableSubs, setAvailableSubs] = useState<any[]>([]);
   const [announcementSub, setAnnouncementSub] = useState<any>(null);
-
+  const [playedGroupIdsInDuel, setPlayedGroupIdsInDuel] = useState<string[]>([]);
   const opponentName = bots.find(b => b.level === duel.bot_level)?.name || 'Bot';
   const opponentEmoji = bots.find(b => b.level === duel.bot_level)?.emoji || '🤖';
   const bot = bots.find(b => b.level === duel.bot_level) || { name: 'Gegner', emoji: '👤', accuracy: 0.5 };
@@ -1752,13 +1751,14 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     setLoading(true);
     setRoundSubcategories(prev => [...prev, sub]);
 
-    const selectedGroup = await findBestGroup(sub.id, [userId]);
+    const selectedGroup = await findBestGroup(sub.id, [userId], playedGroupIdsInDuel);
     if (!selectedGroup) {
       setQuestions([]);
       setLoading(false);
       setPhase('playing');
       return;
     }
+    setPlayedGroupIdsInDuel(prev => [...prev, selectedGroup.id]);
 
     const { data: members } = await supabase
       .from('question_group_members')
@@ -1940,6 +1940,9 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
   const [currentRoundInfo, setCurrentRoundInfo] = useState<any>(null);
   const [opponentProfile, setOpponentProfile] = useState<any>(null);
   const [duelData, setDuelData] = useState<any>(duel);
+  const [playedGroupIdsInDuel, setPlayedGroupIdsInDuel] = useState<string[]>([]);
+
+
 
   const isChallenger = duel.challenger_id === userId;
   const opponentId = isChallenger ? duel.opponent_id : duel.challenger_id;
@@ -1991,11 +1994,13 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     let roundData: any;
 
     if (isNewRound) {
-      selectedGroup = await findBestGroup(sub.id, [userId, opponentId]);
+      const existingGroupIds = roundsData.map((r: any) => r.group_id).filter(Boolean);
+      selectedGroup = await findBestGroup(sub.id, [userId, opponentId], [...existingGroupIds, ...playedGroupIdsInDuel]);
       if (!selectedGroup) {
         setLoading(false);
         return;
       }
+      setPlayedGroupIdsInDuel(prev => [...prev, selectedGroup!.id]);
       roundData = {
         round: currentRound + 1,
         subcategory_id: sub.id,
