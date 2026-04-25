@@ -1762,10 +1762,10 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
 
     const groupQuestions = members?.map((m: any) => m.questions).filter(Boolean) || [];
 
-    const { data: alreadyPlayed } = await supabase.from('played_groups').select('id').eq('user_id', userId).eq('group_id', selectedGroup.id).maybeSingle();
-    if (!alreadyPlayed) {
-      await supabase.from('played_groups').insert({ user_id: userId, group_id: selectedGroup.id });
-    }
+    await supabase.from('played_groups').upsert(
+      { user_id: userId, group_id: selectedGroup.id },
+      { onConflict: 'user_id,group_id', ignoreDuplicates: true }
+    );
 
     setRoundSubcategories(prev => {
       const updated = [...prev];
