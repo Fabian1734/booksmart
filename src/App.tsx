@@ -82,20 +82,26 @@ async function findBestGroup(subcategoryId: string, userIds: string[]): Promise<
 
   if (!allGroups || allGroups.length === 0) return null;
 
-  // Hole alle gespielten Gruppen für diesen User
+  const allGroupIds = allGroups.map(g => g.id);
   const { data: playedData } = await supabase
     .from('played_groups')
     .select('group_id')
-    .in('user_id', userIds);
+    .in('user_id', userIds)
+    .in('group_id', allGroupIds);
 
-  const playedGroupIds = new Set(playedData?.map(p => p.group_id) || []);
+  // Zähle wie oft jede Gruppe gespielt wurde
+  const playCount: Record<string, number> = {};
+  allGroups.forEach(g => { playCount[g.id] = 0; });
+  playedData?.forEach(p => {
+    playCount[p.group_id] = (playCount[p.group_id] || 0) + 1;
+  });
 
-  // Finde erste Gruppe die noch NIE gespielt wurde
-  const neverPlayed = allGroups.find(g => !playedGroupIds.has(g.id));
-  if (neverPlayed) return neverPlayed;
+  // Finde minimalen Play-Count
+  const minCount = Math.min(...allGroups.map(g => playCount[g.id]));
 
-  // Alle gespielt — nimm die mit der niedrigsten group_number (älteste)
-  return allGroups[0];
+  // Erste Gruppe mit minimalem Count zurückgeben
+  const candidate = allGroups.find(g => playCount[g.id] === minCount);
+  return candidate || allGroups[0];
 }
 
 interface CSVQuestion {
