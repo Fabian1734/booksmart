@@ -2022,7 +2022,10 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
   
     determineNextPhase(roundsData);
   };
-
+  useEffect(() => {
+    loadInit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duel.id]);
   const determineNextPhase = (rounds: any[]) => {
     if (rounds.length === TOTAL_ROUNDS && rounds[TOTAL_ROUNDS - 1].challenger_answers && rounds[TOTAL_ROUNDS - 1].opponent_answers) {
       setPhase('done');
