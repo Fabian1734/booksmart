@@ -1768,10 +1768,8 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
 
     const groupQuestions = members?.map((m: any) => m.questions).filter(Boolean) || [];
 
-    await supabase.from('played_groups').upsert(
-      { user_id: userId, group_id: selectedGroup.id },
-      { onConflict: 'user_id,group_id', ignoreDuplicates: true }
-    );
+    const { error: insertError } = await supabase.from('played_groups').insert({ user_id: userId, group_id: selectedGroup.id });
+    if (insertError) console.error('played_groups insert failed:', insertError);
 
     setRoundSubcategories(prev => {
       const updated = [...prev];
