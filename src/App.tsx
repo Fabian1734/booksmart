@@ -1990,7 +1990,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
       (roundsData[currentRound - 1]?.challenger_answers && roundsData[currentRound - 1]?.opponent_answers)
     );
 
-    let selectedGroup;
+    let selectedGroup: { id: string; group_number: number } | null = null;
     let roundData: any;
 
     if (isNewRound) {
