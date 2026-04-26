@@ -1715,7 +1715,8 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   const [phase, setPhase] = useState<'selectSub' | 'announcement' | 'playing' | 'intermediate'>('selectSub');
   const [availableSubs, setAvailableSubs] = useState<any[]>([]);
   const [announcementSub, setAnnouncementSub] = useState<any>(null);
-  const [playedGroupIdsInDuel, setPlayedGroupIdsInDuel] = useState<string[]>([]);
+  const [playedGroupsCache, setPlayedGroupsCache] = useState<string[]>([]);
+
   const opponentName = bots.find(b => b.level === duel.bot_level)?.name || 'Bot';
   const opponentEmoji = bots.find(b => b.level === duel.bot_level)?.emoji || '🤖';
   const bot = bots.find(b => b.level === duel.bot_level) || { name: 'Gegner', emoji: '👤', accuracy: 0.5 };
@@ -1751,14 +1752,13 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     setLoading(true);
     setRoundSubcategories(prev => [...prev, sub]);
 
-    const selectedGroup = await findBestGroup(sub.id, [userId], playedGroupIdsInDuel);
+    const selectedGroup = await findBestGroupWithCache(sub.id, [userId], playedGroupsCache);
     if (!selectedGroup) {
       setQuestions([]);
       setLoading(false);
       setPhase('playing');
       return;
     }
-    setPlayedGroupIdsInDuel(prev => [...prev, selectedGroup.id]);
 
     const { data: members } = await supabase
       .from('question_group_members')
@@ -1770,6 +1770,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
 
     const { error: insertError } = await supabase.from('played_groups').insert({ user_id: userId, group_id: selectedGroup.id });
     if (insertError) console.error('played_groups insert failed:', insertError);
+    else setPlayedGroupsCache(prev => [...prev, selectedGroup.id]);
 
     setRoundSubcategories(prev => {
       const updated = [...prev];
@@ -1780,6 +1781,36 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     setQuestions(groupQuestions);
     setLoading(false);
     setPhase('playing');
+  };
+
+  const findBestGroupWithCache = async (subcategoryId: string, userIds: string[], localCache: string[]) => {
+    const { data: allGroups } = await supabase
+      .from('question_groups')
+      .select('id, group_number')
+      .eq('subcategory_id', subcategoryId)
+      .order('group_number', { ascending: true });
+
+    if (!allGroups || allGroups.length === 0) return null;
+
+    const allGroupIds = allGroups.map(g => g.id);
+    const { data: playedData } = await supabase
+      .from('played_groups')
+      .select('group_id')
+      .in('user_id', userIds)
+      .in('group_id', allGroupIds);
+
+    const playCount: Record<string, number> = {};
+    allGroups.forEach(g => { playCount[g.id] = 0; });
+    playedData?.forEach(p => {
+      playCount[p.group_id] = (playCount[p.group_id] || 0) + 1;
+    });
+    localCache.forEach(gid => {
+      if (playCount[gid] !== undefined) playCount[gid]++;
+    });
+
+    const minCount = Math.min(...allGroups.map(g => playCount[g.id]));
+    const candidate = allGroups.find(g => playCount[g.id] === minCount);
+    return candidate || allGroups[0];
   };
 
   const handleRoundComplete = async (userAnswers: boolean[], botAnswers: boolean[] | null) => {
