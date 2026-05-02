@@ -2783,12 +2783,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
         <div>
           <h1 style={{ color: '#F5F0E8', letterSpacing: '2px', margin: 0, fontSize: '20px', fontWeight: '900', fontFamily: fontDisplay }}>BOOKSMART</h1>
           <TotalQuestionsCount />
-        </div>        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button onClick={() => setSubView('notifications')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', position: 'relative', padding: '6px' }}>
-              🔔
-              {unreadCount > 0 && <span style={{ position: 'absolute', top: '2px', right: '2px', backgroundColor: '#E53935', color: 'white', fontSize: '10px', fontWeight: 'bold', borderRadius: '50%', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unreadCount}</span>}
-            </button>
-          </div>
+        </div>        
         </div>
       </div>
 
@@ -2800,7 +2795,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
           <div style={{ padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
             <section>
-              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>AKTUELLE DUELLE</div>
+              <div style>AKTUELLE DUELLE{myTurnDuels.length > 0 && ` (${myTurnDuels.length})`}</div>={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>AKTUELLE DUELLE</div>
               {myActiveDuels.length === 0 ? (
                 <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '20px', textAlign: 'center' }}>
                   <p style={{ color: colors.muted, fontSize: '14px', margin: 0 }}>Keine laufenden Duelle</p>
