@@ -2795,7 +2795,9 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
           <div style={{ padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
             <section>
-              <div style>AKTUELLE DUELLE{myTurnDuels.length > 0 && ` (${myTurnDuels.length})`}</div>={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>AKTUELLE DUELLE</div>
+              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>
+                AKTUELLE DUELLE{myTurnDuels.length > 0 && ` (${myTurnDuels.length})`}
+              </div>
               {myActiveDuels.length === 0 ? (
                 <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '20px', textAlign: 'center' }}>
                   <p style={{ color: colors.muted, fontSize: '14px', margin: 0 }}>Keine laufenden Duelle</p>
