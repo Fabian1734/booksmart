@@ -2205,6 +2205,8 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
 
     if (newStatus === 'completed') {
       setPhase('done');
+    } else if (newTurnUserId === userId) {
+      setPhase('overview');
     } else {
       setPhase('waiting');
     }
