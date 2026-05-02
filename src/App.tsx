@@ -2155,7 +2155,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
       const nextRound = newRoundsData.length + 1;
       newTurnUserId = whoChoosesRound(nextRound);
     } else {
-      newTurnUserId = opponentId;
+      newTurnUserId = userId === duel.challenger_id ? duel.opponent_id : duel.challenger_id;
     }
 
     const challengerScore = newRoundsData.reduce((sum: number, r: any) => sum + (r.challenger_answers?.filter(Boolean).length || 0), 0);
