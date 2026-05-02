@@ -1452,6 +1452,18 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
   );
 }
 
+function BotTurnCountdownScreen({ emoji, name, value }: { emoji: string, name: string, value: number }) {
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: fontBody }}>
+      <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+        <div style={{ fontSize: 'clamp(52px, 16vw, 80px)', marginBottom: '20px', lineHeight: 1 }}>{emoji}</div>
+        <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '28px', fontFamily: fontBody }}>{name} spielt</p>
+        <div style={{ fontSize: 'clamp(64px, 18vw, 120px)', fontWeight: '800', color: colors.primary, fontFamily: fontDisplay, lineHeight: 1 }}>{value}</div>
+      </div>
+    </div>
+  );
+}
+
 function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }: {
   questions: any[], roundNumber: number, totalRounds: number, bot: any | null,
   onRoundComplete: (userAnswers: boolean[], botAnswers: boolean[] | null, selectedAnswers: string[]) => void
@@ -1464,7 +1476,9 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   const [botAnswers, setBotAnswers] = useState<boolean[]>([]);
   const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
   const [timeLeft, setTimeLeft] = useState(15);
-  const [timerActive, setTimerActive] = useState(true);
+  const [timerActive, setTimerActive] = useState(() => !bot);
+  const [botPlayCountdown, setBotPlayCountdown] = useState<number | null>(bot ? 5 : null);
+  const botQuestionIntroDoneRef = React.useRef(false);
   const [streak, setStreak] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
   const [animateQuestion, setAnimateQuestion] = useState(false);
@@ -1507,6 +1521,34 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
     style.id = 'quiz-animations';
     if (!document.getElementById('quiz-animations')) document.head.appendChild(style);
   }, []);
+
+  React.useEffect(() => {
+    if (!bot) {
+      setBotPlayCountdown(null);
+      setTimerActive(true);
+      return;
+    }
+    botQuestionIntroDoneRef.current = false;
+    setTimerActive(false);
+    setBotPlayCountdown(5);
+  }, [current, bot]);
+
+  React.useEffect(() => {
+    if (!bot || botPlayCountdown === null) return;
+    if (botPlayCountdown === 0) {
+      if (botQuestionIntroDoneRef.current) return;
+      botQuestionIntroDoneRef.current = true;
+      const done = setTimeout(() => {
+        setBotPlayCountdown(null);
+        setTimerActive(true);
+      }, 400);
+      return () => clearTimeout(done);
+    }
+    const id = setTimeout(() => {
+      setBotPlayCountdown(c => (c === null || c <= 0 ? c : c - 1));
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [bot, botPlayCountdown]);
 
   // Timer
   React.useEffect(() => {
@@ -1600,6 +1642,11 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
+      {bot && botPlayCountdown !== null && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, backgroundColor: colors.bg }}>
+          <BotTurnCountdownScreen emoji={bot.emoji} name={bot.name} value={botPlayCountdown} />
+        </div>
+      )}
       {/* Streak Banner */}
       {showStreak && (
         <div className="pop-in" style={{ position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#FF9800', color: 'white', padding: '10px 24px', borderRadius: '24px', fontSize: '16px', fontWeight: 'bold', zIndex: 999, whiteSpace: 'nowrap', boxShadow: '0 4px 16px rgba(255,152,0,0.4)' }}>
@@ -1719,6 +1766,8 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   const [availableSubs, setAvailableSubs] = useState<any[]>([]);
   const [announcementSub, setAnnouncementSub] = useState<any>(null);
   const [playedGroupsCache, setPlayedGroupsCache] = useState<string[]>([]);
+  const [botCategoryCountdown, setBotCategoryCountdown] = useState<number | null>(null);
+  const botCategoryPickStarted = React.useRef(false);
 
   const opponentName = bots.find(b => b.level === duel.bot_level)?.name || 'Bot';
   const opponentEmoji = bots.find(b => b.level === duel.bot_level)?.emoji || '🤖';
@@ -1739,17 +1788,29 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   }, [duel.category_id]);
 
   useEffect(() => {
-    const autoPickForBot = async () => {
-      if (phase === 'selectSub' && !userChoosesThisRound && availableSubs.length > 0) {
-        const randomSub = availableSubs[Math.floor(Math.random() * availableSubs.length)];
-        setAnnouncementSub(randomSub);
-        setPhase('announcement');
-        setTimeout(() => { loadQuestionsForSub(randomSub); }, 4000);
-      }
-    };
-    autoPickForBot();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (phase !== 'selectSub' || userChoosesThisRound || availableSubs.length === 0) {
+      setBotCategoryCountdown(null);
+      return;
+    }
+    botCategoryPickStarted.current = false;
+    setBotCategoryCountdown(5);
   }, [phase, userChoosesThisRound, availableSubs, currentRound]);
+
+  useEffect(() => {
+    if (botCategoryCountdown === null || botCategoryCountdown < 0) return;
+    if (botCategoryCountdown === 0) {
+      if (!availableSubs.length || botCategoryPickStarted.current) return;
+      botCategoryPickStarted.current = true;
+      const randomSub = availableSubs[Math.floor(Math.random() * availableSubs.length)];
+      setAnnouncementSub(randomSub);
+      setPhase('announcement');
+      setTimeout(() => { loadQuestionsForSub(randomSub); }, 4000);
+      return;
+    }
+    const id = setTimeout(() => setBotCategoryCountdown(c => (c === null || c <= 0 ? c : c - 1)), 1000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [botCategoryCountdown, availableSubs]);
 
   const loadQuestionsForSub = async (sub: any) => {
     setLoading(true);
@@ -1911,6 +1972,9 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
 
   if (phase === 'selectSub') {
     if (!userChoosesThisRound) {
+      if (botCategoryCountdown !== null) {
+        return <BotTurnCountdownScreen emoji={opponentEmoji} name={opponentName} value={botCategoryCountdown} />;
+      }
       return (
         <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif' }}>
           <p style={{ color: colors.muted, letterSpacing: '2px' }}>{opponentName.split(' ')[1]?.toUpperCase() || 'GEGNER'} WÄHLT...</p>
