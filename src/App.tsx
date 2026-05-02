@@ -1476,9 +1476,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   const [botAnswers, setBotAnswers] = useState<boolean[]>([]);
   const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
   const [timeLeft, setTimeLeft] = useState(15);
-  const [timerActive, setTimerActive] = useState(() => !bot);
-  const [botPlayCountdown, setBotPlayCountdown] = useState<number | null>(bot ? 5 : null);
-  const botQuestionIntroDoneRef = React.useRef(false);
+  const [timerActive, setTimerActive] = useState(true);
   const [streak, setStreak] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
   const [animateQuestion, setAnimateQuestion] = useState(false);
@@ -1521,34 +1519,6 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
     style.id = 'quiz-animations';
     if (!document.getElementById('quiz-animations')) document.head.appendChild(style);
   }, []);
-
-  React.useEffect(() => {
-    if (!bot) {
-      setBotPlayCountdown(null);
-      setTimerActive(true);
-      return;
-    }
-    botQuestionIntroDoneRef.current = false;
-    setTimerActive(false);
-    setBotPlayCountdown(5);
-  }, [current, bot]);
-
-  React.useEffect(() => {
-    if (!bot || botPlayCountdown === null) return;
-    if (botPlayCountdown === 0) {
-      if (botQuestionIntroDoneRef.current) return;
-      botQuestionIntroDoneRef.current = true;
-      const done = setTimeout(() => {
-        setBotPlayCountdown(null);
-        setTimerActive(true);
-      }, 400);
-      return () => clearTimeout(done);
-    }
-    const id = setTimeout(() => {
-      setBotPlayCountdown(c => (c === null || c <= 0 ? c : c - 1));
-    }, 1000);
-    return () => clearTimeout(id);
-  }, [bot, botPlayCountdown]);
 
   // Timer
   React.useEffect(() => {
@@ -1642,11 +1612,6 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
-      {bot && botPlayCountdown !== null && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, backgroundColor: colors.bg }}>
-          <BotTurnCountdownScreen emoji={bot.emoji} name={bot.name} value={botPlayCountdown} />
-        </div>
-      )}
       {/* Streak Banner */}
       {showStreak && (
         <div className="pop-in" style={{ position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#FF9800', color: 'white', padding: '10px 24px', borderRadius: '24px', fontSize: '16px', fontWeight: 'bold', zIndex: 999, whiteSpace: 'nowrap', boxShadow: '0 4px 16px rgba(255,152,0,0.4)' }}>
