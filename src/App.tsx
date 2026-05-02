@@ -566,7 +566,10 @@ function AdminImport({ onBack }: { onBack: () => void }) {
         }
 
         const ungrouped = questionsInSub.filter(q => !groupedIds.has(q.id));
-        if (ungrouped.length < 3) continue;
+        for (let i = ungrouped.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [ungrouped[i], ungrouped[j]] = [ungrouped[j], ungrouped[i]];
+        }        if (ungrouped.length < 3) continue;
 
         const { data: maxGroups } = await supabase
           .from('question_groups')
@@ -2780,10 +2783,23 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       {/* Header */}
       <div style={{ backgroundColor: colors.primary, padding: '14px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ color: '#F5F0E8', letterSpacing: '2px', margin: 0, fontSize: '20px', fontWeight: '900', fontFamily: fontDisplay }}>BOOKSMART</h1>
-          <TotalQuestionsCount />
-        </div>        
+          <div>
+            <h1 style={{ color: '#F5F0E8', letterSpacing: '2px', margin: 0, fontSize: '20px', fontWeight: '900', fontFamily: fontDisplay }}>BOOKSMART</h1>
+            <TotalQuestionsCount />
+          </div>
+          <button
+            type="button"
+            onClick={() => setSubView('notifications')}
+            style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', padding: '4px', lineHeight: 1 }}
+            aria-label="Benachrichtigungen"
+          >
+            🔔
+            {unreadCount > 0 && (
+              <span style={{ position: 'absolute', top: '-2px', right: '-4px', backgroundColor: '#B85C6A', color: '#F5F0E8', fontSize: '10px', fontWeight: 'bold', minWidth: '18px', height: '18px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
