@@ -2148,11 +2148,12 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     
     let newStatus = duelData.status;
     let newTurnUserId = duelData.current_turn_user_id;
-
+    
     if (newRoundsData.length === TOTAL_ROUNDS && bothAnswered) {
       newStatus = 'completed';
     } else if (bothAnswered) {
-      newTurnUserId = lastRound.chosen_by === userId ? opponentId : userId;
+      const nextRound = newRoundsData.length + 1;
+      newTurnUserId = whoChoosesRound(nextRound);
     } else {
       newTurnUserId = opponentId;
     }
