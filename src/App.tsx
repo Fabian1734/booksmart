@@ -2683,14 +2683,8 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   const [activeDuel, setActiveDuel] = useState<any>(null);
   const [challengingUser, setChallengingUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [myActiveDuels, setMyActiveDuels] = useState<any[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
-
-  const loadUnreadCount = async () => {
-    const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_read', false);
-    setUnreadCount(count || 0);
-  };
 
   const loadActiveDuels = async () => {
     const { data } = await supabase
@@ -2711,10 +2705,9 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   useEffect(() => {
     supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
     supabase.from('profiles').select('is_admin').eq('id', user.id).single().then(({ data }) => setIsAdmin(data?.is_admin || false));
-    loadUnreadCount();
     loadActiveDuels();
     loadOnlineUsers();
-    const interval = setInterval(() => { loadUnreadCount(); loadActiveDuels(); }, 30000);
+    const interval = setInterval(() => { loadActiveDuels(); }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
@@ -2732,7 +2725,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   // Full-screen subviews
   if (subView === 'botDuel' && activeDuel) return <BotDuelGame duel={activeDuel} userId={user.id} onFinish={goHome} />;
   if (subView === 'userDuel' && activeDuel) return <UserDuelGame duel={activeDuel} userId={user.id} onFinish={goHome} />;
-  if (subView === 'notifications') return <Notifications userId={user.id} onBack={() => { setSubView('none'); loadUnreadCount(); }} />;
+  if (subView === 'notifications') return <Notifications userId={user.id} onBack={() => setSubView('none')} />;
   if (subView === 'userDuelCategory' && challengingUser) return <UserDuelCategorySelect opponent={challengingUser} userId={user.id} onBack={() => setSubView('none')} onStart={(duel) => { setChallengingUser(null); setActiveDuel(duel); setSubView('userDuel'); }} />;
 
   if (subView === 'selectOpponentBot') return (
@@ -2782,24 +2775,11 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
 
       {/* Header */}
       <div style={{ backgroundColor: colors.primary, padding: '14px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ maxWidth: '700px', margin: '0 auto' }}>
           <div>
             <h1 style={{ color: '#F5F0E8', letterSpacing: '2px', margin: 0, fontSize: '20px', fontWeight: '900', fontFamily: fontDisplay }}>BOOKSMART</h1>
             <TotalQuestionsCount />
           </div>
-          <button
-            type="button"
-            onClick={() => setSubView('notifications')}
-            style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', padding: '4px', lineHeight: 1 }}
-            aria-label="Benachrichtigungen"
-          >
-            🔔
-            {unreadCount > 0 && (
-              <span style={{ position: 'absolute', top: '-2px', right: '-4px', backgroundColor: '#B85C6A', color: '#F5F0E8', fontSize: '10px', fontWeight: 'bold', minWidth: '18px', height: '18px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </button>
         </div>
       </div>
 
@@ -2812,7 +2792,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
 
             <section>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>
-                AKTUELLE DUELLE{myTurnDuels.length > 0 && ` (${myTurnDuels.length})`}
+                AKTUELLE DUELLE ({myTurnDuels.length})
               </div>
               {myActiveDuels.length === 0 ? (
                 <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '20px', textAlign: 'center' }}>
