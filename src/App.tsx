@@ -548,37 +548,27 @@ function AdminImport({ onBack }: { onBack: () => void }) {
           .select('id')
           .eq('subcategory_id', sub.id);
 
-        if (!questionsInSub || questionsInSub.length === 0) continue;
+          if (!questionsInSub || questionsInSub.length === 0) continue;
 
-        const { data: existingGroups } = await supabase
-          .from('question_groups')
-          .select('id')
-          .eq('subcategory_id', sub.id);
-
-        let groupedIds = new Set<string>();
-        if (existingGroups && existingGroups.length > 0) {
-          const groupIds = existingGroups.map(g => g.id);
-          const { data: existingMembers } = await supabase
-            .from('question_group_members')
-            .select('question_id')
-            .in('group_id', groupIds);
-          groupedIds = new Set(existingMembers?.map(m => m.question_id) || []);
-        }
-
-        const ungrouped = questionsInSub.filter(q => !groupedIds.has(q.id));
-        for (let i = ungrouped.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [ungrouped[i], ungrouped[j]] = [ungrouped[j], ungrouped[i]];
-        }        if (ungrouped.length < 3) continue;
-
-        const { data: maxGroups } = await supabase
-          .from('question_groups')
-          .select('group_number')
-          .eq('subcategory_id', sub.id)
-          .order('group_number', { ascending: false })
-          .limit(1);
-
-        let nextGroupNumber = (maxGroups && maxGroups.length > 0 ? maxGroups[0].group_number : 0) + 1;
+          const { data: existingGroups } = await supabase
+            .from('question_groups')
+            .select('id')
+            .eq('subcategory_id', sub.id);
+  
+          if (existingGroups && existingGroups.length > 0) {
+            const groupIds = existingGroups.map(g => g.id);
+            await supabase.from('question_group_members').delete().in('group_id', groupIds);
+            await supabase.from('question_groups').delete().in('id', groupIds);
+          }
+  
+          const allQuestions = [...questionsInSub];
+          for (let i = allQuestions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+          }
+          if (allQuestions.length < 3) continue;
+  
+          let nextGroupNumber = 1;
         let createdForThisSub = 0;
 
         for (let i = 0; i + 2 < ungrouped.length; i += 3) {
