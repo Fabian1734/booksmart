@@ -571,7 +571,7 @@ function AdminImport({ onBack }: { onBack: () => void }) {
           let nextGroupNumber = 1;
         let createdForThisSub = 0;
 
-        for (let i = 0; i + 2 < ungrouped.length; i += 3) {
+        for (let i = 0; i + 2 < allQuestions.length; i += 3) {
           const { data: newGroup, error: groupError } = await supabase
             .from('question_groups')
             .insert({ subcategory_id: sub.id, group_number: nextGroupNumber })
@@ -581,9 +581,9 @@ function AdminImport({ onBack }: { onBack: () => void }) {
           if (groupError || !newGroup) throw groupError;
 
           const members = [
-            { group_id: newGroup.id, question_id: ungrouped[i].id, position: 1 },
-            { group_id: newGroup.id, question_id: ungrouped[i + 1].id, position: 2 },
-            { group_id: newGroup.id, question_id: ungrouped[i + 2].id, position: 3 },
+            { group_id: newGroup.id, question_id: allQuestions[i].id, position: 1 },
+            { group_id: newGroup.id, question_id: allQuestions[i + 1].id, position: 2 },
+            { group_id: newGroup.id, question_id: allQuestions[i + 2].id, position: 3 },
           ];
 
           const { error: memberError } = await supabase.from('question_group_members').insert(members);
