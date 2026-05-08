@@ -2331,7 +2331,6 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
   const isChallenger = duel.challenger_id === userId;
   const opponentId = isChallenger ? duel.opponent_id : duel.challenger_id;
   const roundsData = duelData.rounds_data || [];
-  const roundsGroupKey = JSON.stringify((duelData.rounds_data || []).map((r: any) => r.group_id));
 
   useEffect(() => {
     if (phase !== 'done') return;
@@ -2356,7 +2355,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
       if (!cancelled) setReviewQuestionsByRound(all);
     })();
     return () => { cancelled = true; };
-  }, [phase, duelData.id, roundsGroupKey]);
+  }, [phase, duelData.id, duelData.rounds_data]);
 
   const loadInit = async () => {
     setLoading(true);
