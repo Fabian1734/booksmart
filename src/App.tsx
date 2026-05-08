@@ -103,6 +103,54 @@ async function findBestGroup(subcategoryId: string, userIds: string[], excludeGr
   return candidate || availableGroups[0];
 }
 
+/** Wie User-Duelle: bis zu 4 Subkategorien (mit Gruppen, noch nicht in dieser Duell-Serie), priorisiert nach ungespielten Gruppen. */
+async function buildDuelSubcategoryPickOptions(
+  categoryId: string,
+  playedSubcategoryIds: string[],
+  userIdsForPlayedCheck: string[]
+): Promise<{ pickOptions: any[]; allEligible: any[] }> {
+  const { data: subs } = await supabase.from('subcategories').select('*').eq('category_id', categoryId);
+  const subsWithCounts: any[] = [];
+
+  for (const sub of subs || []) {
+    if (playedSubcategoryIds.includes(sub.id)) continue;
+
+    const { data: allGroups } = await supabase.from('question_groups').select('id').eq('subcategory_id', sub.id);
+    if (!allGroups || allGroups.length === 0) continue;
+
+    const groupIds = allGroups.map(g => g.id);
+    const { data: userPlayed } = await supabase
+      .from('played_groups')
+      .select('group_id')
+      .in('user_id', userIdsForPlayedCheck)
+      .in('group_id', groupIds);
+    const playedGroupIds = new Set(userPlayed?.map(p => p.group_id) || []);
+    const unplayedCount = allGroups.filter(g => !playedGroupIds.has(g.id)).length;
+
+    const { count: questionCount } = await supabase
+      .from('questions')
+      .select('*', { count: 'exact', head: true })
+      .eq('subcategory_id', sub.id);
+
+    subsWithCounts.push({
+      ...sub,
+      question_count: questionCount || 0,
+      unplayed_groups: unplayedCount,
+      has_unplayed: unplayedCount > 0,
+    });
+  }
+
+  subsWithCounts.sort((a, b) => {
+    if (a.has_unplayed && !b.has_unplayed) return -1;
+    if (!a.has_unplayed && b.has_unplayed) return 1;
+    return 0;
+  });
+
+  const selected = subsWithCounts.slice(0, 4);
+  const pickOptions = selected.length > 0 ? selected : subsWithCounts.slice(0, Math.min(3, subsWithCounts.length));
+  return { pickOptions, allEligible: subsWithCounts };
+}
+
 interface CSVQuestion {
   question_text: string;
   type: 'multiple_choice' | 'true_false';
@@ -1718,7 +1766,9 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   const [roundSubcategories, setRoundSubcategories] = useState<any[]>([]);
   const [done, setDone] = useState(false);
   const [phase, setPhase] = useState<'selectSub' | 'announcement' | 'playing' | 'intermediate'>('selectSub');
-  const [availableSubs, setAvailableSubs] = useState<any[]>([]);
+  const [userPickOptions, setUserPickOptions] = useState<any[]>([]);
+  const [eligibleBotSubs, setEligibleBotSubs] = useState<any[]>([]);
+  const [pickOptionsLoading, setPickOptionsLoading] = useState(false);
   const [announcementSub, setAnnouncementSub] = useState<any>(null);
   const [playedGroupsCache, setPlayedGroupsCache] = useState<string[]>([]);
   const [botCategoryCountdown, setBotCategoryCountdown] = useState<number | null>(null);
@@ -1730,33 +1780,35 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   const userChoosesThisRound = currentRound === 1 || currentRound === 3;
 
   useEffect(() => {
-    const loadSubsWithCounts = async () => {
-      const { data: subs } = await supabase.from('subcategories').select('*').eq('category_id', duel.category_id);
-      const subsWithCounts: any[] = [];
-      for (const sub of subs || []) {
-        const { count } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('subcategory_id', sub.id);
-        subsWithCounts.push({ ...sub, question_count: count || 0 });
-      }
-      setAvailableSubs(subsWithCounts);
-    };
-    loadSubsWithCounts();
-  }, [duel.category_id]);
+    if (phase !== 'selectSub' || loading) return;
+    let cancelled = false;
+    setPickOptionsLoading(true);
+    (async () => {
+      const playedSubIds = roundSubcategories.map(s => s.id);
+      const { pickOptions, allEligible } = await buildDuelSubcategoryPickOptions(duel.category_id, playedSubIds, [userId]);
+      if (cancelled) return;
+      setUserPickOptions(pickOptions);
+      setEligibleBotSubs(allEligible);
+      setPickOptionsLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [phase, currentRound, duel.category_id, userId, roundSubcategories, loading]);
 
   useEffect(() => {
-    if (phase !== 'selectSub' || userChoosesThisRound || availableSubs.length === 0) {
+    if (phase !== 'selectSub' || userChoosesThisRound || eligibleBotSubs.length === 0 || pickOptionsLoading) {
       setBotCategoryCountdown(null);
       return;
     }
     botCategoryPickStarted.current = false;
     setBotCategoryCountdown(5);
-  }, [phase, userChoosesThisRound, availableSubs, currentRound]);
+  }, [phase, userChoosesThisRound, eligibleBotSubs, currentRound, pickOptionsLoading]);
 
   useEffect(() => {
     if (botCategoryCountdown === null || botCategoryCountdown < 0) return;
     if (botCategoryCountdown === 0) {
-      if (!availableSubs.length || botCategoryPickStarted.current) return;
+      if (!eligibleBotSubs.length || botCategoryPickStarted.current) return;
       botCategoryPickStarted.current = true;
-      const randomSub = availableSubs[Math.floor(Math.random() * availableSubs.length)];
+      const randomSub = eligibleBotSubs[Math.floor(Math.random() * eligibleBotSubs.length)];
       setAnnouncementSub(randomSub);
       setPhase('announcement');
       setTimeout(() => { loadQuestionsForSub(randomSub); }, 4000);
@@ -1765,7 +1817,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     const id = setTimeout(() => setBotCategoryCountdown(c => (c === null || c <= 0 ? c : c - 1)), 1000);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botCategoryCountdown, availableSubs]);
+  }, [botCategoryCountdown, eligibleBotSubs]);
 
   const loadQuestionsForSub = async (sub: any) => {
     setLoading(true);
@@ -1927,6 +1979,21 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
 
   if (phase === 'selectSub') {
     if (!userChoosesThisRound) {
+      if (pickOptionsLoading && eligibleBotSubs.length === 0) {
+        return (
+          <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+          </div>
+        );
+      }
+      if (!pickOptionsLoading && eligibleBotSubs.length === 0) {
+        return (
+          <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
+            <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', marginBottom: '24px', textAlign: 'center' }}>Kein Thema verfügbar für die Bot-Runde.</p>
+            <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück zum Dashboard</button>
+          </div>
+        );
+      }
       if (botCategoryCountdown !== null) {
         return <BotTurnCountdownScreen emoji={opponentEmoji} name={opponentName} value={botCategoryCountdown} />;
       }
@@ -1936,17 +2003,33 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
         </div>
       );
     }
+    if (pickOptionsLoading) {
+      return (
+        <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+        </div>
+      );
+    }
+    if (userPickOptions.length === 0) {
+      return (
+        <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
+          <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', marginBottom: '24px', textAlign: 'center' }}>Keine passenden Themen für diese Runde.<br />Es braucht Subkategorien mit Fragengruppen, die du noch nicht gespielt hast.</p>
+          <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück zum Dashboard</button>
+        </div>
+      );
+    }
+    const opts = userPickOptions.slice(0, 4);
     return (
       <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
         <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
           <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px', marginTop: '20px' }}>RUNDE {currentRound} VON {TOTAL_ROUNDS}</p>
           <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Du wählst das Thema</h2>
-          <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Für diese Runde</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {availableSubs.map(sub => (
-              <div key={sub.id} onClick={() => loadQuestionsForSub(sub)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px 20px', cursor: 'pointer', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ color: colors.text, fontSize: '15px' }}>{sub.name}</div>
-                <div style={{ color: colors.muted, fontSize: '14px' }}>{sub.question_count} Fragen</div>
+          <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Für diese Runde — wähle eine von vier Themen</p>
+          <div style={{ display: 'grid', gridTemplateColumns: opts.length >= 4 ? '1fr 1fr' : opts.length === 3 ? '1fr 1fr' : '1fr', gap: '12px' }}>
+            {opts.map((sub, idx) => (
+              <div key={sub.id} onClick={() => loadQuestionsForSub(sub)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', minHeight: '100px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gridColumn: opts.length === 3 && idx === 2 ? 'span 2' : 'auto' }}>
+                <div style={{ color: colors.text, fontSize: '15px', fontWeight: 'bold', marginBottom: '6px' }}>{sub.name}</div>
+                <div style={{ color: colors.muted, fontSize: '12px' }}>{sub.question_count} Fragen</div>
               </div>
             ))}
           </div>
@@ -2005,41 +2088,8 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     setOpponentProfile(oppProfile);
   
     const alreadyPlayedSubIds = roundsData.map((r: any) => r.subcategory_id);
-  
-    const { data: subs } = await supabase.from('subcategories').select('*').eq('category_id', duel.category_id);
-    const subsWithCounts: any[] = [];
-  
-    for (const sub of subs || []) {
-      if (alreadyPlayedSubIds.includes(sub.id)) continue;
-      
-      const { data: allGroups } = await supabase.from('question_groups').select('id').eq('subcategory_id', sub.id);
-      if (!allGroups || allGroups.length === 0) continue;
-      
-      const groupIds = allGroups.map(g => g.id);
-      
-      const { data: userPlayed } = await supabase.from('played_groups').select('group_id').in('user_id', [userId, opponentId]).in('group_id', groupIds);
-      const playedGroupIds = new Set(userPlayed?.map(p => p.group_id) || []);
-      
-      const unplayedCount = allGroups.filter(g => !playedGroupIds.has(g.id)).length;
-      
-      const { count: questionCount } = await supabase.from('questions').select('*', { count: 'exact', head: true }).eq('subcategory_id', sub.id);
-      
-      subsWithCounts.push({ 
-        ...sub, 
-        question_count: questionCount || 0,
-        unplayed_groups: unplayedCount,
-        has_unplayed: unplayedCount > 0
-      });
-    }
-  
-    subsWithCounts.sort((a, b) => {
-      if (a.has_unplayed && !b.has_unplayed) return -1;
-      if (!a.has_unplayed && b.has_unplayed) return 1;
-      return 0;
-    });
-  
-    const selected = subsWithCounts.slice(0, 4);
-    setAvailableSubs(selected.length > 0 ? selected : subsWithCounts.slice(0, Math.min(3, subsWithCounts.length)));
+    const { pickOptions } = await buildDuelSubcategoryPickOptions(duel.category_id, alreadyPlayedSubIds, [userId, opponentId]);
+    setAvailableSubs(pickOptions);
     setLoading(false);
   
     determineNextPhase(roundsData);
