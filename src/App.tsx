@@ -65,6 +65,7 @@ const bots = [
 
 const QUESTIONS_PER_ROUND = 3;
 const TOTAL_ROUNDS = 4;
+const QUESTION_TIME_SECONDS = 21;
 
 function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: number): string {
   if (Math.random() < accuracy) return correctAnswer;
@@ -1513,7 +1514,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   const [userAnswers, setUserAnswers] = useState<boolean[]>([]);
   const [botAnswers, setBotAnswers] = useState<boolean[]>([]);
   const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
-  const [timeLeft, setTimeLeft] = useState(15);
+  const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_SECONDS);
   const [timerActive, setTimerActive] = useState(true);
   const [streak, setStreak] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
@@ -1561,7 +1562,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   // Timer
   React.useEffect(() => {
     if (!timerActive || showResult) return;
-    setTimeLeft(15);
+    setTimeLeft(QUESTION_TIME_SECONDS);
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -1645,8 +1646,10 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
     ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
     : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
 
-  const timerPct = (timeLeft / 15) * 100;
-  const timerColor = timeLeft > 8 ? '#4CAF50' : timeLeft > 4 ? '#FF9800' : '#E53935';
+  const timerPct = (timeLeft / QUESTION_TIME_SECONDS) * 100;
+  const timerGreenAbove = Math.round(QUESTION_TIME_SECONDS * (8 / 15));
+  const timerOrangeAbove = Math.round(QUESTION_TIME_SECONDS * (4 / 15));
+  const timerColor = timeLeft > timerGreenAbove ? '#4CAF50' : timeLeft > timerOrangeAbove ? '#FF9800' : '#E53935';
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
