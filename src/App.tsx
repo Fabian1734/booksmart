@@ -3,11 +3,11 @@ import { supabase } from './supabase';
 import * as XLSX from 'xlsx';
 
 const colors = {
-  bg: '#F5F0E8',
-  primary: '#6B1E2E',
-  text: '#3D2B1F',
-  muted: '#8B6F5E',
-  light: '#E8DFD0',
+  bg: '#FAFAF8',
+  primary: '#1A1A1A',
+  text: '#1A1A1A',
+  muted: 'rgba(0,0,0,0.4)',
+  light: 'rgba(0,0,0,0.08)',
 };
 
 const fontDisplay = "'Playfair Display', Georgia, serif";
@@ -23,12 +23,12 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '14px 16px',
   fontSize: '16px',
-  border: '1px solid #C9B99A',
-  backgroundColor: '#FDFAF5',
+  border: '1px solid rgba(0,0,0,0.08)',
+  backgroundColor: '#FFFFFF',
   color: '#3D2B1F',
   fontFamily: fontBody,
   boxSizing: 'border-box',
-  borderRadius: '2px',
+  borderRadius: '4px',
   marginBottom: '12px',
   outline: 'none',
   WebkitAppearance: 'none',
@@ -45,7 +45,7 @@ const btnPrimary: React.CSSProperties = {
   letterSpacing: '2px',
   textTransform: 'uppercase',
   fontFamily: fontBody,
-  borderRadius: '2px',
+  borderRadius: '4px',
   marginBottom: '12px',
   WebkitTapHighlightColor: 'transparent',
 };
@@ -257,7 +257,7 @@ function AddBook() {
 
   return (
     <div>
-      <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '16px' }}>
+      <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', marginBottom: '16px' }}>
         <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Kategorie</label>
         <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} style={{ ...inputStyle, marginBottom: '16px' }}>
           <option value="">— Kategorie wählen —</option>
@@ -285,7 +285,7 @@ function AddBook() {
       </button>
 
       {message && (
-        <div style={{ backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
+        <div style={{ backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#E53935'}`, borderRadius: '8px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
           {message.text}
         </div>
       )}
@@ -467,7 +467,7 @@ function ExcelExportImport() {
       <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '20px' }}>
         Exportiere Fragen einer Subkategorie als Excel, bearbeite sie und lade sie wieder hoch.
       </p>
-      <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '20px' }}>
+      <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', marginBottom: '20px' }}>
         <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Kategorie</label>
         <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} style={{ ...inputStyle, marginBottom: '16px' }}>
           <option value="">— Kategorie wählen —</option>
@@ -489,11 +489,11 @@ function ExcelExportImport() {
         </label>
       </div>
       {message && (
-        <div style={{ backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
+        <div style={{ backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#E53935'}`, borderRadius: '8px', padding: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
           {message.text}
         </div>
       )}
-      <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#FFF9E6', borderRadius: '4px', fontSize: '12px', color: colors.muted, lineHeight: '1.6' }}>
+      <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#FFF9E6', borderRadius: '8px', fontSize: '12px', color: colors.muted, lineHeight: '1.6' }}>
         <strong>💡 Hinweise:</strong><br />
         • <strong>question_id leer</strong> = Neue Frage wird hinzugefügt<br />
         • <strong>question_id vorhanden</strong> = Bestehende Frage wird überschrieben<br />
@@ -665,9 +665,9 @@ function AdminImport({ onBack }: { onBack: () => void }) {
         <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>FRAGEN IMPORTIEREN</h2>
 
-        <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px' }}>
+        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', marginBottom: '24px' }}>
           <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px' }}>CSV-Format:</h3>
-          <pre style={{ fontSize: '12px', color: colors.muted, overflowX: 'auto', backgroundColor: colors.light, padding: '12px', borderRadius: '4px' }}>
+          <pre style={{ fontSize: '12px', color: colors.muted, overflowX: 'auto', backgroundColor: colors.light, padding: '12px', borderRadius: '8px' }}>
 {`question_text,type,correct_answer,option_a,option_b,option_c,option_d,difficulty,category_name,subcategory_name,book_title
 Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,Alte Eidgenossenschaft,Marignano`}
           </pre>
@@ -682,7 +682,7 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
 
         {questions.length > 0 && (
           <>
-            <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '24px' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px' }}>Preview: {questions.length} Fragen</h3>
               <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
                 {questions.slice(0, 5).map((q, i) => (
@@ -701,7 +701,7 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
         )}
 
         {result && (
-          <div style={{ backgroundColor: result.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${result.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
+          <div style={{ backgroundColor: result.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${result.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '8px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
             {result}
           </div>
         )}
@@ -728,7 +728,7 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
             {grouping ? 'Erstelle Gruppen...' : 'Gruppen erstellen'}
           </button>
           {groupResult && (
-            <div style={{ backgroundColor: groupResult.startsWith('✅') ? '#E8F5E9' : groupResult.startsWith('ℹ️') ? '#FFF9E6' : '#FDECEA', border: `1px solid ${groupResult.startsWith('✅') ? '#4CAF50' : groupResult.startsWith('ℹ️') ? '#FFC107' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
+            <div style={{ backgroundColor: groupResult.startsWith('✅') ? '#E8F5E9' : groupResult.startsWith('ℹ️') ? '#FFF9E6' : '#FDECEA', border: `1px solid ${groupResult.startsWith('✅') ? '#4CAF50' : groupResult.startsWith('ℹ️') ? '#FFC107' : '#E53935'}`, borderRadius: '8px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
               {groupResult}
             </div>
           )}
@@ -787,14 +787,14 @@ function ReportedQuestions() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {reports.map(report => (
-            <div key={report.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px' }}>
+            <div key={report.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '16px' }}>
               <div style={{ fontSize: '13px', color: colors.muted, marginBottom: '8px' }}>
                 Gemeldet von {report.reported_by?.username} · {new Date(report.created_at).toLocaleDateString('de-CH')}
               </div>
               <div style={{ fontSize: '14px', color: colors.text, marginBottom: '8px', fontWeight: 'bold' }}>
                 {report.questions?.question_text}
               </div>
-              <div style={{ fontSize: '13px', color: colors.text, marginBottom: '12px', padding: '12px', backgroundColor: '#FFF9E6', borderRadius: '4px' }}>
+              <div style={{ fontSize: '13px', color: colors.text, marginBottom: '12px', padding: '12px', backgroundColor: '#FFF9E6', borderRadius: '8px' }}>
                 💬 {report.reason}
               </div>
               <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '12px' }}>
@@ -803,12 +803,12 @@ function ReportedQuestions() {
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {report.status === 'open' && (
                   <>
-                    <button onClick={() => updateStatus(report.id, 'in_progress')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>In Bearbeitung</button>
-                    <button onClick={() => updateStatus(report.id, 'resolved')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Erledigt</button>
-                    <button onClick={() => updateStatus(report.id, 'dismissed')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.muted, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Ablehnen</button>
+                    <button onClick={() => updateStatus(report.id, 'in_progress')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>In Bearbeitung</button>
+                    <button onClick={() => updateStatus(report.id, 'resolved')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Erledigt</button>
+                    <button onClick={() => updateStatus(report.id, 'dismissed')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.muted, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Ablehnen</button>
                   </>
                 )}
-                <button onClick={() => deleteQuestion(report.questions.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#E53935', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Frage löschen</button>
+                <button onClick={() => deleteQuestion(report.questions.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#E53935', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Frage löschen</button>
               </div>
             </div>
           ))}
@@ -888,7 +888,7 @@ function Notifications({ userId, onBack }: { userId: string, onBack: () => void 
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {notifications.map(notif => (
-              <div key={notif.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+              <div key={notif.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '16px', display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
                 <div style={{ fontSize: '24px', flexShrink: 0 }}>{iconForType(notif.type)}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '15px', color: colors.text, marginBottom: '4px', fontWeight: 'bold' }}>{notif.title}</div>
@@ -1006,11 +1006,11 @@ function UserSearch({ userId, onBack, onChallenge }: { userId: string, onBack: (
         </div>
 
         {message && (
-          <div style={{ backgroundColor: message.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '4px', padding: '16px', marginBottom: '24px', fontSize: '14px' }}>{message}</div>
+          <div style={{ backgroundColor: message.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '8px', padding: '16px', marginBottom: '24px', fontSize: '14px' }}>{message}</div>
         )}
 
         {searchResult && (
-          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '32px' }}>
+          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', marginBottom: '32px' }}>
             <div style={{ fontSize: '18px', color: colors.text, marginBottom: '20px' }}>{searchResult.username}</div>
             <button style={btnPrimary} onClick={sendFriendRequest}>Freundschaftsanfrage senden</button>
             <button style={btnSecondary} onClick={() => onChallenge(searchResult)}>Zum Duell herausfordern</button>
@@ -1021,7 +1021,7 @@ function UserSearch({ userId, onBack, onChallenge }: { userId: string, onBack: (
           <div style={{ marginBottom: '32px' }}>
             <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px', letterSpacing: '1px' }}>ANFRAGEN</h3>
             {pendingRequests.map(req => (
-              <div key={req.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '12px' }}>
+              <div key={req.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
                 <div style={{ fontSize: '15px', color: colors.text, marginBottom: '12px' }}>{req.requester.username} möchte mit dir befreundet sein</div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button style={{ ...btnPrimary, marginBottom: 0, fontSize: '14px', padding: '10px' }} onClick={() => acceptRequest(req.id)}>Annehmen</button>
@@ -1038,7 +1038,7 @@ function UserSearch({ userId, onBack, onChallenge }: { userId: string, onBack: (
             {friends.map(f => {
               const friend = f.requester.id === userId ? f.addressee : f.requester;
               return (
-                <div key={f.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div key={f.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontSize: '15px', color: colors.text }}>{friend.username}</div>
                   <button style={{ ...btnSecondary, marginBottom: 0, fontSize: '13px', padding: '8px 16px', width: 'auto' }} onClick={() => onChallenge(friend)}>Duell</button>
                 </div>
@@ -1120,7 +1120,7 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
         <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         
-        <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px' }}>
+        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h2 style={{ color: colors.text, fontSize: '20px', margin: 0 }}>vs {oppName}</h2>
             <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.primary }}>{myScore} : {oppScore}</div>
@@ -1152,7 +1152,7 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
                   : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
 
                 return (
-                  <div key={qIdx} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '16px' }}>
+                  <div key={qIdx} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
                     <div style={{ fontSize: '15px', color: colors.text, marginBottom: '12px', fontWeight: 'bold' }}>Frage {qIdx + 1}</div>
                     <div style={{ fontSize: '14px', color: colors.text, marginBottom: '16px', lineHeight: '1.5' }}>{q.question_text}</div>
                     
@@ -1163,11 +1163,11 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
                         const isOppAnswer = opt.key === oppAnswer;
                         
                         let bg = 'white';
-                        let border = '1px solid #E8DFD0';
+                        let border = '0.5px solid rgba(0,0,0,0.08)';
                         if (isCorrect) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; }
 
                         return (
-                          <div key={opt.key} style={{ backgroundColor: bg, border, padding: '10px 12px', borderRadius: '4px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div key={opt.key} style={{ backgroundColor: bg, border, padding: '10px 12px', borderRadius: '8px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>
                               <span style={{ fontWeight: 'bold', marginRight: '8px' }}>{opt.key}.</span>
                               {opt.label}
@@ -1184,7 +1184,7 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
 
                     <button 
                       onClick={() => setReportingQuestion(q)} 
-                      style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', border: '1px solid #E53935', color: '#E53935', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}
+                      style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', border: '1px solid #E53935', color: '#E53935', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}
                     >
                       ⚠️ Frage melden
                     </button>
@@ -1384,7 +1384,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
                   <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>Noch keine Duelle gespielt</p>
                 ) : myStats.map(cat => (
                   <div key={cat.id} style={{ marginBottom: '8px' }}>
-                    <div onClick={() => { setExpandedCategory(expandedCategory === cat.id ? null : cat.id); loadSubStats(cat.id); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div onClick={() => { setExpandedCategory(expandedCategory === cat.id ? null : cat.id); loadSubStats(cat.id); }} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '15px', color: colors.text, marginBottom: '6px' }}>{cat.name}</div>
                         <div style={{ height: '6px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden' }}>
@@ -1398,7 +1398,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
                       <div style={{ color: colors.muted, fontSize: '12px' }}>{expandedCategory === cat.id ? '▲' : '▼'}</div>
                     </div>
                     {expandedCategory === cat.id && (
-                      <div style={{ backgroundColor: '#FAF8F4', border: '1px solid #E8DFD0', borderTop: 'none', borderRadius: '0 0 4px 4px', padding: '8px 16px' }}>
+                      <div style={{ backgroundColor: '#FAF8F4', border: '0.5px solid rgba(0,0,0,0.08)', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: '8px 16px' }}>
                         {!subStats[cat.id] ? (
                           <p style={{ color: colors.muted, fontSize: '13px', padding: '8px 0' }}>Laden...</p>
                         ) : subStats[cat.id].length === 0 ? (
@@ -1432,7 +1432,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {scores.map((s, i) => (
-                      <div key={s.id} style={{ backgroundColor: '#FDFAF5', border: `1px solid ${i === 0 ? '#DAA520' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#C9B99A'}`, padding: '14px 16px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div key={s.id} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${i === 0 ? '#DAA520' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#C9B99A'}`, padding: '14px 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <span style={{ fontSize: i < 3 ? '20px' : '14px', minWidth: '28px', textAlign: 'center' }}>{medal(i)}</span>
                         <div style={{ flex: 1 }}>
                           <div style={{ color: colors.text, fontSize: '15px', marginBottom: '4px' }}>{s.username}{s.id === userId ? ' (du)' : ''}</div>
@@ -1467,7 +1467,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
                       const draw = myScore === oppScore;
                       const oppName = d.opponent_is_bot ? bots.find(b => b.level === d.bot_level)?.name || 'Bot' : opponent?.username;
                       return (
-                        <div key={d.id} onClick={() => setSelectedDuel(d)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div key={d.id} onClick={() => setSelectedDuel(d)} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
                             <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold', marginBottom: '2px' }}>vs {oppName}</div>
                             <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name}</div>
@@ -1690,8 +1690,8 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
             const isCorrect = opt.key === q.correct_answer;
             const isUserSelected = opt.key === selected;
             const isBotSelected = opt.key === botAnswer;
-            let bg = '#FDFAF5', border = `1px solid #C9B99A`, color = colors.text;
-            if (isUserSelected && !showResult) { bg = '#E8DFD0'; border = `2px solid ${colors.primary}`; }
+            let bg = '#FFFFFF', border = `1px solid rgba(0,0,0,0.08)`, color = colors.text;
+            if (isUserSelected && !showResult) { bg = 'rgba(0,0,0,0.08)'; border = `2px solid ${colors.primary}`; }
             if (showResult) {
               if (isCorrect) { bg = '#E8F5E9'; border = '2px solid #4CAF50'; color = '#2E7D32'; }
               else if (isUserSelected) { bg = '#FDECEA'; border = '2px solid #E53935'; color = '#B71C1C'; }
@@ -1709,7 +1709,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   transition: 'background-color 0.2s, border-color 0.2s, transform 0.1s',
                   transform: isUserSelected && !showResult ? 'scale(0.98)' : 'scale(1)',
-                  boxShadow: isUserSelected && !showResult ? '0 2px 8px rgba(107,30,46,0.15)' : 'none',
+                  boxShadow: isUserSelected && !showResult ? '0 2px 8px rgba(26,26,26,0.12)' : 'none',
                 }}
               >
                 <span style={{ flex: 1, paddingRight: '8px' }}>
@@ -1718,8 +1718,8 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
                 <span style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                   {showResult && isCorrect && <span style={{ fontSize: '18px' }}>✓</span>}
                   {showResult && isUserSelected && !isCorrect && <span style={{ fontSize: '18px' }}>✗</span>}
-                  {showResult && bot && isUserSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>👤</span>}
-                  {showResult && bot && isBotSelected && <span style={{ backgroundColor: '#E8DFD0', borderRadius: '4px', padding: '2px 5px', fontSize: '12px' }}>{bot.emoji}</span>}
+                  {showResult && bot && isUserSelected && <span style={{ backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: '8px', padding: '2px 5px', fontSize: '12px' }}>👤</span>}
+                  {showResult && bot && isBotSelected && <span style={{ backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: '8px', padding: '2px 5px', fontSize: '12px' }}>{bot.emoji}</span>}
                 </span>
               </button>
             );
@@ -1738,13 +1738,13 @@ function IntermediateScore({ myTotal, botTotal, roundsPlayed, onContinue }: { my
         <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>NACH {roundsPlayed} RUNDEN</h2>
         <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>ZWISCHENSTAND</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '32px' }}>
-          <div style={{ backgroundColor: '#FDFAF5', border: '2px solid #C9B99A', padding: '20px 12px', borderRadius: '4px' }}>
+          <div style={{ backgroundColor: '#FFFFFF', border: '2px solid rgba(0,0,0,0.08)', padding: '20px 12px', borderRadius: '8px' }}>
             <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
             <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
             <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotal}</div>
             <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * QUESTIONS_PER_ROUND} richtig</div>
           </div>
-          <div style={{ backgroundColor: '#FDFAF5', border: '2px solid #C9B99A', padding: '20px 12px', borderRadius: '4px' }}>
+          <div style={{ backgroundColor: '#FFFFFF', border: '2px solid rgba(0,0,0,0.08)', padding: '20px 12px', borderRadius: '8px' }}>
             <div style={{ fontSize: '20px', marginBottom: '6px' }}>🤖</div>
             <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>GEGNER</div>
             <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
@@ -1884,7 +1884,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     return candidate || allGroups[0];
   };
 
-  const handleRoundComplete = async (userAnswers: boolean[], botAnswers: boolean[] | null) => {
+  const handleRoundComplete = async (userAnswers: boolean[], botAnswers: boolean[] | null, _selectedAnswers?: string[]) => {
     const newRoundUserAnswers = [...roundUserAnswers, userAnswers];
     const newRoundBotAnswers = [...roundBotAnswers, botAnswers || []];
     setRoundUserAnswers(newRoundUserAnswers);
@@ -1939,13 +1939,13 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
           <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
           <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
-            <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '8px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotal}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
-            <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '8px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>{opponentEmoji}</div>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>{opponentName.split(' ')[1]?.toUpperCase() || 'GEGNER'}</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
@@ -2027,7 +2027,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
           <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Für diese Runde — wähle eine von vier Themen</p>
           <div style={{ display: 'grid', gridTemplateColumns: opts.length >= 4 ? '1fr 1fr' : opts.length === 3 ? '1fr 1fr' : '1fr', gap: '12px' }}>
             {opts.map((sub, idx) => (
-              <div key={sub.id} onClick={() => loadQuestionsForSub(sub)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', minHeight: '100px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gridColumn: opts.length === 3 && idx === 2 ? 'span 2' : 'auto' }}>
+              <div key={sub.id} onClick={() => loadQuestionsForSub(sub)} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', padding: '20px 16px', cursor: 'pointer', borderRadius: '8px', minHeight: '100px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gridColumn: opts.length === 3 && idx === 2 ? 'span 2' : 'auto' }}>
                 <div style={{ color: colors.text, fontSize: '15px', fontWeight: 'bold', marginBottom: '6px' }}>{sub.name}</div>
                 <div style={{ color: colors.muted, fontSize: '12px' }}>{sub.question_count} Fragen</div>
               </div>
@@ -2308,22 +2308,22 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
           <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
           <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
-            <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '8px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myScore}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
-            <div style={{ backgroundColor: '#FDFAF5', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '4px' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '8px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>{opponentProfile?.username?.toUpperCase() || 'GEGNER'}</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{oppScore}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
           </div>
-          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '16px', marginBottom: '24px', textAlign: 'left' }}>
+          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '16px', marginBottom: '24px', textAlign: 'left' }}>
             {roundsData.map((round: any, roundIdx: number) => (
-              <div key={roundIdx} style={{ marginBottom: roundIdx < roundsData.length - 1 ? '16px' : 0, paddingBottom: roundIdx < roundsData.length - 1 ? '16px' : 0, borderBottom: roundIdx < roundsData.length - 1 ? '1px solid #E8DFD0' : 'none' }}>
+              <div key={roundIdx} style={{ marginBottom: roundIdx < roundsData.length - 1 ? '16px' : 0, paddingBottom: roundIdx < roundsData.length - 1 ? '16px' : 0, borderBottom: roundIdx < roundsData.length - 1 ? '0.5px solid rgba(0,0,0,0.08)' : 'none' }}>
                 <div style={{ fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Runde {round.round} · {round.subcategory_name} · Gruppe {round.group_number}</div>
                 <div style={{ display: 'flex', gap: '16px' }}>
                   <div style={{ flex: 1 }}>
@@ -2415,7 +2415,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Gegen {opponentProfile?.username}</p>
         <div style={{ display: 'grid', gridTemplateColumns: availableSubs.length >= 4 ? '1fr 1fr' : availableSubs.length === 3 ? '1fr 1fr' : '1fr', gap: '12px' }}>
           {availableSubs.slice(0, 4).map((sub, idx) => (
-            <div key={sub.id} onClick={() => selectSubAndPlay(sub)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', minHeight: '100px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gridColumn: availableSubs.length === 3 && idx === 2 ? 'span 2' : 'auto' }}>
+            <div key={sub.id} onClick={() => selectSubAndPlay(sub)} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', padding: '20px 16px', cursor: 'pointer', borderRadius: '8px', minHeight: '100px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gridColumn: availableSubs.length === 3 && idx === 2 ? 'span 2' : 'auto' }}>
               <div style={{ color: colors.text, fontSize: '15px', fontWeight: 'bold', marginBottom: '6px' }}>{sub.name}</div>
               <div style={{ color: colors.muted, fontSize: '12px' }}>{sub.question_count} Fragen</div>
             </div>
@@ -2491,7 +2491,7 @@ function DuelsList({ userId, onOpenDuel, onBack, onNewUserDuel }: { userId: stri
               }
 
               return (
-                <div key={d.id} onClick={() => onOpenDuel(d)} style={{ backgroundColor: '#FDFAF5', border: `1px solid ${isMyTurn && !isDone ? colors.primary : '#C9B99A'}`, borderRadius: '4px', padding: '16px', cursor: 'pointer' }}>
+                <div key={d.id} onClick={() => onOpenDuel(d)} style={{ backgroundColor: '#FFFFFF', border: `1px solid ${isMyTurn && !isDone ? colors.primary : '#C9B99A'}`, borderRadius: '8px', padding: '16px', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold' }}>vs {opponent?.username}</div>
                     {isDone && <div style={{ fontSize: '14px', color: colors.text }}>{myScore} : {oppScore}</div>}
@@ -2577,7 +2577,7 @@ function UserDuelCategorySelect({ opponent, userId, onBack, onStart }: { opponen
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '20px' }}>Wähle eine Kategorie</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {categories.map(cat => (
-            <div key={cat.id} onClick={() => startDuel(cat)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between' }}>
+            <div key={cat.id} onClick={() => startDuel(cat)} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', padding: '20px 16px', cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <div style={{ fontSize: '28px' }}>{icons[cat.name] || '📚'}</div>
                 <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
@@ -2661,7 +2661,7 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
   return (
     <div style={{ padding: '24px 16px', maxWidth: '600px', margin: '0 auto' }}>
       {/* Profil */}
-      <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '20px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
       <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: avatarColor(profile?.username || ''), display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', fontSize: '26px', fontWeight: 'bold', flexShrink: 0, fontFamily: fontDisplay, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
           {profile?.username?.[0]?.toUpperCase() || '?'}
         </div>
@@ -2680,7 +2680,7 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
         </div>
         {searchMsg && <div style={{ fontSize: '13px', color: searchMsg.startsWith('✅') ? '#4CAF50' : '#E53935', marginTop: '8px' }}>{searchMsg}</div>}
         {searchResult && (
-          <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '15px', color: colors.text }}>{searchResult.username}</span>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button onClick={sendFriendRequest} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Freund</button>
@@ -2695,7 +2695,7 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
         <div style={{ marginBottom: '24px' }}>
           <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '10px' }}>ANFRAGEN ({pendingRequests.length})</div>
           {pendingRequests.map(req => (
-            <div key={req.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={req.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '14px', color: colors.text }}>{req.requester.username}</span>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={() => acceptRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Annehmen</button>
@@ -2714,7 +2714,7 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
         ) : friends.map(f => {
           const friend = f.requester.id === userId ? f.addressee : f.requester;
           return (
-            <div key={f.id} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '14px 16px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={f.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '14px', color: colors.text }}>{friend.username}</span>
               <button onClick={() => onChallenge(friend)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.primary, border: `1px solid ${colors.primary}`, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Duell</button>
             </div>
@@ -2805,7 +2805,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>{selectedCategory?.name}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {bots.map(bot => (
-            <div key={bot.name} onClick={() => startBotDuel(bot)} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '16px', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div key={bot.name} onClick={() => startBotDuel(bot)} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', padding: '16px', cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ fontSize: '28px' }}>{bot.emoji}</div>
               <div>
                 <div style={{ color: colors.text, fontSize: '15px', marginBottom: '2px' }}>{bot.name}</div>
@@ -2825,7 +2825,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
         <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {categories.map(cat => (
-            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setSubView('selectOpponentBot'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', padding: '20px 16px', cursor: 'pointer', borderRadius: '4px' }}>
+            <div key={cat.id} onClick={() => { setSelectedCategory(cat); setSubView('selectOpponentBot'); }} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', padding: '20px 16px', cursor: 'pointer', borderRadius: '8px' }}>
               <div style={{ color: colors.text, fontSize: '16px' }}>{cat.name}</div>
             </div>
           ))}
@@ -2843,10 +2843,10 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif', paddingBottom: `${NAV_HEIGHT}px` }}>
 
       {/* Header */}
-      <div style={{ backgroundColor: colors.primary, padding: '14px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
+      <div style={{ backgroundColor: '#1A1A1A', padding: '14px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '700px', margin: '0 auto' }}>
           <div>
-            <h1 style={{ color: '#F5F0E8', letterSpacing: '2px', margin: 0, fontSize: '20px', fontWeight: '900', fontFamily: fontDisplay }}>BOOKSMART</h1>
+            <h1 style={{ color: '#F5F0E8', letterSpacing: '3px', margin: 0, fontSize: '18px', fontWeight: '500', fontFamily: fontDisplay }}>BOOKSMART</h1>
             <TotalQuestionsCount />
           </div>
         </div>
@@ -2864,8 +2864,8 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
                 AKTUELLE DUELLE ({myTurnDuels.length})
               </div>
               {myActiveDuels.length === 0 ? (
-                <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '20px', textAlign: 'center' }}>
-                  <p style={{ color: colors.muted, fontSize: '14px', margin: 0 }}>Keine laufenden Duelle</p>
+                <div style={{ backgroundColor: '#FFFFFF', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', textAlign: 'center' }}>
+                  <p style={{ color: 'rgba(0,0,0,0.4)', fontSize: '14px', margin: 0 }}>Keine laufenden Duelle</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2873,12 +2873,12 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
                     const isChallenger = d.challenger_id === user.id;
                     const opponent = isChallenger ? d.opponent : d.challenger;
                     return (
-                      <div key={d.id} onClick={() => { setActiveDuel(d); setSubView('userDuel'); }} style={{ backgroundColor: '#FDFAF5', border: `2px solid ${colors.primary}`, borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div key={d.id} onClick={() => { setActiveDuel(d); setSubView('userDuel'); }} style={{ backgroundColor: '#FFFFFF', border: '0.5px solid rgba(0,0,0,0.08)', borderLeft: '3px solid #1A1A1A', borderRadius: '8px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <div style={{ fontSize: '15px', color: colors.text, fontWeight: 'bold', marginBottom: '2px' }}>vs {opponent?.username}</div>
-                          <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name}</div>
+                          <div style={{ fontSize: '14px', color: '#1A1A1A', fontWeight: '500', marginBottom: '2px' }}>vs {opponent?.username}</div>
+                          <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.4)' }}>{d.categories?.name} · Du bist dran</div>
                         </div>
-                        <div style={{ backgroundColor: colors.primary, color: '#F5F0E8', fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '2px', letterSpacing: '1px' }}>DU BIST DRAN</div>
+                        <div style={{ fontSize: '13px', fontWeight: '500', color: '#1A1A1A' }}>SPIELEN</div>
                       </div>
                     );
                   })}
@@ -2886,12 +2886,12 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
                     const isChallenger = d.challenger_id === user.id;
                     const opponent = isChallenger ? d.opponent : d.challenger;
                     return (
-                      <div key={d.id} onClick={() => { setActiveDuel(d); setSubView('userDuel'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div key={d.id} onClick={() => { setActiveDuel(d); setSubView('userDuel'); }} style={{ backgroundColor: '#FFFFFF', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: 0.6 }}>
                         <div>
-                          <div style={{ fontSize: '15px', color: colors.text, marginBottom: '2px' }}>vs {opponent?.username}</div>
-                          <div style={{ fontSize: '12px', color: colors.muted }}>{d.categories?.name}</div>
+                          <div style={{ fontSize: '14px', color: '#1A1A1A', fontWeight: '500', marginBottom: '2px' }}>vs {opponent?.username}</div>
+                          <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.4)' }}>{d.categories?.name}</div>
                         </div>
-                        <div style={{ fontSize: '12px', color: colors.muted }}>wartet...</div>
+                        <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.35)' }}>wartet...</div>
                       </div>
                     );
                   })}
@@ -2900,34 +2900,30 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
             </section>
 
             <section>
-              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>NEUES QUIZ STARTEN</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div onClick={() => setSubView('selectCategoryBot')} style={{ backgroundColor: colors.primary, borderRadius: '4px', padding: '18px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ fontSize: '24px' }}>🤖</div>
-                  <div>
-                    <div style={{ color: '#F5F0E8', fontSize: '15px', fontWeight: 'bold', marginBottom: '2px' }}>Duell vs Bot</div>
-                    <div style={{ color: '#C9A0AC', fontSize: '12px' }}>Spiele gegen eine KI</div>
-                  </div>
+              <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.4)', letterSpacing: '2px', marginBottom: '12px', fontWeight: '500' }}>NEUES QUIZ STARTEN</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                <div onClick={() => setSubView('selectCategoryBot')} style={{ backgroundColor: '#1A1A1A', borderRadius: '8px', padding: '20px 16px', cursor: 'pointer' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.5" style={{ marginBottom: '8px' }}><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m10-10h-4M6 12H2m15.07-7.07l-2.83 2.83M9.76 14.24l-2.83 2.83m0-10.14l2.83 2.83m4.48 4.48l2.83 2.83"/></svg>
+                  <div style={{ color: '#F5F0E8', fontSize: '13px', fontWeight: '500' }}>Bot Duell</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>Gegen KI spielen</div>
                 </div>
-                <div onClick={() => { setChallengingUser(null); setSubView('userDuelCategory'); }} style={{ backgroundColor: '#FDFAF5', border: '1px solid #C9B99A', borderRadius: '4px', padding: '18px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ fontSize: '24px' }}>⚔️</div>
-                  <div>
-                    <div style={{ color: colors.text, fontSize: '15px', fontWeight: 'bold', marginBottom: '2px' }}>Duell vs User</div>
-                    <div style={{ color: colors.muted, fontSize: '12px' }}>Fordere einen Spieler heraus</div>
-                  </div>
+                <div onClick={() => { setChallengingUser(null); setSubView('userDuelCategory'); }} style={{ backgroundColor: '#FFFFFF', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px 16px', cursor: 'pointer' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="1.5" style={{ marginBottom: '8px' }}><path d="M12 4v16m-4-4l4 4 4-4"/><line x1="5" y1="4" x2="19" y2="4"/></svg>
+                  <div style={{ color: '#1A1A1A', fontSize: '13px', fontWeight: '500' }}>Neues Duell</div>
+                  <div style={{ color: 'rgba(0,0,0,0.4)', fontSize: '11px', marginTop: '2px' }}>Spieler herausfordern</div>
                 </div>
+              </div>
                 {onlineUsers.length > 0 && (
-                  <div style={{ backgroundColor: '#FDFAF5', border: '1px solid #E8DFD0', borderRadius: '4px', padding: '12px 16px' }}>
-                    <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '10px' }}>SPIELER</div>
+                  <div style={{ backgroundColor: '#FFFFFF', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '12px 16px', marginTop: '8px' }}>
+                    <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.4)', letterSpacing: '1px', marginBottom: '10px' }}>SPIELER</div>
                     {onlineUsers.slice(0, 5).map(u => (
                       <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
-                        <span style={{ fontSize: '14px', color: colors.text }}>{u.username}</span>
-                        <button onClick={() => { setChallengingUser(u); setSubView('userDuelCategory'); }} style={{ fontSize: '11px', padding: '4px 10px', backgroundColor: 'transparent', border: `1px solid ${colors.primary}`, color: colors.primary, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '1px' }}>HERAUSFORDERN</button>
+                        <span style={{ fontSize: '14px', color: '#1A1A1A' }}>{u.username}</span>
+                        <button onClick={() => { setChallengingUser(u); setSubView('userDuelCategory'); }} style={{ fontSize: '11px', padding: '4px 10px', backgroundColor: 'transparent', border: '0.5px solid #1A1A1A', color: '#1A1A1A', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '1px' }}>HERAUSFORDERN</button>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
             </section>
 
             
@@ -2951,16 +2947,39 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       </div>
 
       {/* Bottom Nav */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: `${NAV_HEIGHT}px`, backgroundColor: '#FDFAF5', borderTop: `1px solid ${colors.light}`, display: 'flex', zIndex: 200 }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: `${NAV_HEIGHT}px`, backgroundColor: '#FFFFFF', borderTop: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', zIndex: 200 }}>
       {([
-          { id: 'home' as const, label: 'Start', icon: '🏠' },
-          { id: 'stats' as const, label: 'Statistik', icon: '📊' },
-          { id: 'profile' as const, label: 'Profil', icon: '👤' },
-          ...(isAdmin ? [{ id: 'admin' as const, label: 'Admin', icon: '⚙️' }] : []),
-        ]).map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); setSubView('none'); }} style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', color: tab === t.id ? colors.primary : colors.muted, fontFamily: 'Helvetica, Arial, sans-serif' }}>
-            <span style={{ fontSize: '22px' }}>{t.icon}</span>
-            <span style={{ fontSize: '10px', letterSpacing: '1px', fontWeight: tab === t.id ? 'bold' : 'normal' }}>{t.label.toUpperCase()}</span>
+          { id: 'home' as const, label: 'Start', svg: (
+            <>
+              <path d="M3 12l9-8 9 8" />
+              <path d="M5 10v10h14V10" />
+            </>
+          ) },
+          { id: 'stats' as const, label: 'Statistik', svg: (
+            <>
+              <rect x="3" y="12" width="4" height="8" />
+              <rect x="10" y="8" width="4" height="12" />
+              <rect x="17" y="4" width="4" height="16" />
+            </>
+          ) },
+          { id: 'profile' as const, label: 'Profil', svg: (
+            <>
+              <circle cx="12" cy="8" r="4" />
+              <path d="M5 20c0-4 3.5-7 7-7s7 3 7 7" />
+            </>
+          ) },
+          ...(isAdmin ? [{ id: 'admin' as const, label: 'Admin', svg: (
+            <>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v4m0 12v4m10-10h-4M6 12H2m15.07-7.07l-2.83 2.83M9.76 14.24l-2.83 2.83m0-10.14l2.83 2.83m4.48 4.48l2.83 2.83" />
+            </>
+          ) }] : []),
+        ] as const).map(t => (
+          <button key={t.id} onClick={() => { setTab(t.id); setSubView('none'); }} style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tab === t.id ? '#1A1A1A' : 'rgba(0,0,0,0.25)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              {t.svg}
+            </svg>
+            <span style={{ fontSize: '10px', letterSpacing: '1px', fontWeight: tab === t.id ? 'bold' : 'normal', color: tab === t.id ? '#1A1A1A' : 'rgba(0,0,0,0.3)' }}>{t.label.toUpperCase()}</span>
           </button>
         ))}
       </div>
