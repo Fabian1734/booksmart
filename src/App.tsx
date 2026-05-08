@@ -58,10 +58,17 @@ const btnSecondary: React.CSSProperties = {
 };
 
 const bots = [
-  { name: 'Lernender Maxim', level: 1, accuracy: 0.3, emoji: '🐣' },
-  { name: 'Wissbegierige Aleksandra', level: 2, accuracy: 0.55, emoji: '📖' },
-  { name: 'Professor Fabian', level: 3, accuracy: 0.8, emoji: '🎓' },
+  { name: 'Walter Tell', level: 1, accuracy: 0.3, emoji: '🏹' },
+  { name: 'Winkelried', level: 2, accuracy: 0.55, emoji: '⚔️' },
+  { name: 'General Guisan', level: 3, accuracy: 0.8, emoji: '🎖️' },
 ];
+
+/** Kurzname für UI (z. B. „Tell“, „Winkelried“, „Guisan“); ein Wort = ganzer Name. */
+function shortBotDisplayName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] || 'Gegner';
+  return parts.slice(1).join(' ');
+}
 
 const QUESTIONS_PER_ROUND = 3;
 const TOTAL_ROUNDS = 4;
@@ -1733,14 +1740,217 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   );
 }
 
-function IntermediateScore({ myTotal, botTotal, roundsPlayed, onContinue }: { myTotal: number, botTotal: number, roundsPlayed: number, onContinue: () => void }) {
+function formatSelectionLabel(sel: string | undefined): string {
+  if (sel === undefined || sel === '' || sel === '__timeout__') return '— (abgelaufen)';
+  return sel;
+}
+
+function QuestionReviewBlock({
+  q,
+  questionLabel,
+  mySelection,
+  myCorrect,
+  opponentSelection,
+  opponentCorrect,
+  myName,
+  oppName,
+  showOpponent,
+  headerRightExtra,
+}: {
+  q: any;
+  questionLabel: string;
+  mySelection: string;
+  myCorrect: boolean;
+  opponentSelection?: string;
+  opponentCorrect?: boolean;
+  myName: string;
+  oppName: string;
+  showOpponent: boolean;
+  headerRightExtra?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const options = q.type === 'true_false'
+    ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
+    : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter((o: { label: string }) => o.label);
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-      <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+    <div style={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', overflow: 'hidden', marginBottom: '8px', backgroundColor: '#FFFFFF' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: open ? 'rgba(0,0,0,0.04)' : '#FFFFFF',
+          cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontFamily: 'Helvetica, Arial, sans-serif',
+        }}
+      >
+        <span style={{ fontSize: '13px', color: colors.text, fontWeight: '600' }}>{questionLabel}</span>
+        <span style={{ fontSize: '12px', color: colors.muted, flexShrink: 0 }}>
+          {open ? '▲' : '▼'} {myCorrect ? '✓' : '✗'}
+          {headerRightExtra || (showOpponent && opponentCorrect !== undefined ? ` · ${opponentCorrect ? '✓' : '✗'} ${oppName}` : '')}
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 14px 14px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+          <p style={{ fontSize: '14px', color: colors.text, lineHeight: 1.5, marginTop: '12px', marginBottom: '12px' }}>{q.question_text}</p>
+          <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '10px' }}>
+            <strong style={{ color: colors.text }}>{myName}:</strong> {formatSelectionLabel(mySelection)} {myCorrect ? '✓' : '✗'}
+            {showOpponent && opponentSelection !== undefined && (
+              <span style={{ display: 'block', marginTop: '4px' }}><strong style={{ color: colors.text }}>{oppName}:</strong> {formatSelectionLabel(opponentSelection)} {opponentCorrect ? '✓' : '✗'}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {options.map((opt: { key: string; label: string }) => {
+              const isCorrect = opt.key === q.correct_answer;
+              const mine = !!mySelection && opt.key === mySelection;
+              const theirs = showOpponent && !!opponentSelection && opt.key === opponentSelection;
+              let bg = '#FAFAF8';
+              let bd = '1px solid rgba(0,0,0,0.08)';
+              if (isCorrect) { bg = '#E8F5E9'; bd = '1px solid #4CAF50'; }
+              else if (mine && !myCorrect) { bg = '#FDECEA'; bd = '1px solid #E53935'; }
+              return (
+                <div key={opt.key} style={{ backgroundColor: bg, border: bd, borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: colors.text }}>
+                  <strong style={{ opacity: 0.6 }}>{opt.key}.</strong> {opt.label}
+                  {isCorrect && <span style={{ color: '#4CAF50', marginLeft: '8px', fontSize: '12px' }}>richtig</span>}
+                  {mine && <span style={{ marginLeft: '8px', fontSize: '11px', color: colors.muted }}>({myName})</span>}
+                  {theirs && <span style={{ marginLeft: '8px', fontSize: '11px', color: colors.muted }}>({oppName})</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type BotRoundReview = {
+  round: number;
+  subcategoryName: string;
+  groupNumber?: number;
+  userAnswers: boolean[];
+  botAnswers: boolean[];
+  questions: any[];
+  userSelections: string[];
+};
+
+function BotDuelRoundsOverview({ rounds, opponentShort }: { rounds: BotRoundReview[]; opponentShort: string }) {
+  if (rounds.length === 0) return null;
+  return (
+    <div style={{ textAlign: 'left', marginBottom: '24px' }}>
+      <h3 style={{ fontSize: '14px', color: colors.text, letterSpacing: '1px', marginBottom: '12px', fontWeight: 'bold' }}>RUNDENÜBERSICHT</h3>
+      {rounds.map((r) => (
+        <div key={r.round} style={{ marginBottom: '18px', paddingBottom: '14px', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+          <div style={{ fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '10px' }}>
+            Runde {r.round} · {r.subcategoryName}{r.groupNumber != null ? ` · Gruppe ${r.groupNumber}` : ''}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+            {r.userAnswers.map((uOk, qi) => (
+              <div key={qi} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: colors.muted }}>
+                <span>Frage {qi + 1}</span>
+                <span>
+                  <span style={{ color: uOk ? '#4CAF50' : '#E53935', fontWeight: 'bold' }}>Du {uOk ? '✓' : '✗'}</span>
+                  <span style={{ margin: '0 6px', opacity: 0.4 }}>|</span>
+                  <span style={{ color: r.botAnswers[qi] ? '#4CAF50' : '#E53935', fontWeight: 'bold' }}>{opponentShort} {r.botAnswers[qi] ? '✓' : '✗'}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+          {(r.questions || []).map((q: any, qi: number) => (
+            <QuestionReviewBlock
+              key={q.id || `${r.round}-${qi}`}
+              q={q}
+              questionLabel={`Frage ${qi + 1}`}
+              mySelection={r.userSelections[qi] || ''}
+              myCorrect={!!r.userAnswers[qi]}
+              myName="Du"
+              oppName={opponentShort}
+              showOpponent={false}
+              headerRightExtra={` · ${opponentShort} ${r.botAnswers[qi] ? '✓' : '✗'}`}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UserDuelRoundsOverview({
+  rounds,
+  questionsByRound,
+  myName,
+  oppName,
+  isChallenger,
+}: {
+  rounds: any[];
+  questionsByRound: any[][];
+  myName: string;
+  oppName: string;
+  isChallenger: boolean;
+}) {
+  if (!rounds.length) return null;
+  return (
+    <div style={{ textAlign: 'left', marginBottom: '24px' }}>
+      <h3 style={{ fontSize: '14px', color: colors.text, letterSpacing: '1px', marginBottom: '12px', fontWeight: 'bold' }}>RUNDENÜBERSICHT</h3>
+      {rounds.map((r: any, ri: number) => {
+        const myAns = isChallenger ? r.challenger_answers : r.opponent_answers;
+        const oppAns = isChallenger ? r.opponent_answers : r.challenger_answers;
+        const mySel = isChallenger ? r.challenger_selections : r.opponent_selections;
+        const oppSel = isChallenger ? r.opponent_selections : r.challenger_selections;
+        const qs = questionsByRound[ri] || [];
+        return (
+          <div key={ri} style={{ marginBottom: '18px', paddingBottom: '14px', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+            <div style={{ fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '10px' }}>
+              Runde {r.round} · {r.subcategory_name} · Gruppe {r.group_number}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+              {(myAns || []).map((uOk: boolean, qi: number) => (
+                <div key={qi} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: colors.muted }}>
+                  <span>Frage {qi + 1}</span>
+                  <span>
+                    <span style={{ color: uOk ? '#4CAF50' : '#E53935', fontWeight: 'bold' }}>{myName} {uOk ? '✓' : '✗'}</span>
+                    <span style={{ margin: '0 6px', opacity: 0.4 }}>|</span>
+                    <span style={{ color: oppAns?.[qi] ? '#4CAF50' : '#E53935', fontWeight: 'bold' }}>{oppName} {oppAns?.[qi] ? '✓' : '✗'}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            {qs.map((q: any, qi: number) => (
+              <QuestionReviewBlock
+                key={q.id || `${r.round}-${qi}`}
+                q={q}
+                questionLabel={`Frage ${qi + 1}`}
+                mySelection={mySel?.[qi] || ''}
+                myCorrect={!!myAns?.[qi]}
+                opponentSelection={oppSel?.[qi] || ''}
+                opponentCorrect={!!oppAns?.[qi]}
+                myName={myName}
+                oppName={oppName}
+                showOpponent
+              />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function IntermediateScore({
+  myTotal, botTotal, roundsPlayed, onContinue, roundSummaries, opponentShort,
+}: {
+  myTotal: number;
+  botTotal: number;
+  roundsPlayed: number;
+  onContinue: () => void;
+  roundSummaries: BotRoundReview[];
+  opponentShort: string;
+}) {
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 32px', fontFamily: 'Helvetica, Arial, sans-serif', overflowY: 'auto' }}>
+      <div style={{ textAlign: 'center', maxWidth: '560px', width: '100%', margin: '0 auto' }}>
         <div style={{ fontSize: '42px', marginBottom: '16px' }}>📊</div>
         <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>NACH {roundsPlayed} RUNDEN</h2>
-        <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>ZWISCHENSTAND</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '32px' }}>
+        <p style={{ color: colors.muted, marginBottom: '24px', fontSize: '13px', letterSpacing: '1px' }}>ZWISCHENSTAND</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
           <div style={{ backgroundColor: '#FFFFFF', border: '2px solid rgba(0,0,0,0.08)', padding: '20px 12px', borderRadius: '8px' }}>
             <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
             <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
@@ -1754,6 +1964,7 @@ function IntermediateScore({ myTotal, botTotal, roundsPlayed, onContinue }: { my
             <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * QUESTIONS_PER_ROUND} richtig</div>
           </div>
         </div>
+        <BotDuelRoundsOverview rounds={roundSummaries} opponentShort={opponentShort} />
         <button style={btnPrimary} onClick={onContinue}>Weiter</button>
       </div>
     </div>
@@ -1767,6 +1978,8 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   const [roundUserAnswers, setRoundUserAnswers] = useState<boolean[][]>([]);
   const [roundBotAnswers, setRoundBotAnswers] = useState<boolean[][]>([]);
   const [roundSubcategories, setRoundSubcategories] = useState<any[]>([]);
+  const [roundQuestionsPlayed, setRoundQuestionsPlayed] = useState<any[][]>([]);
+  const [roundUserSelectionsPlayed, setRoundUserSelectionsPlayed] = useState<string[][]>([]);
   const [done, setDone] = useState(false);
   const [phase, setPhase] = useState<'selectSub' | 'announcement' | 'playing' | 'intermediate'>('selectSub');
   const [userPickOptions, setUserPickOptions] = useState<any[]>([]);
@@ -1887,7 +2100,9 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     return candidate || allGroups[0];
   };
 
-  const handleRoundComplete = async (userAnswers: boolean[], botAnswers: boolean[] | null, _selectedAnswers?: string[]) => {
+  const handleRoundComplete = async (userAnswers: boolean[], botAnswers: boolean[] | null, selectedAnswers?: string[]) => {
+    setRoundQuestionsPlayed(prev => [...prev, questions.map((q: any) => ({ ...q }))]);
+    setRoundUserSelectionsPlayed(prev => [...prev, selectedAnswers || []]);
     const newRoundUserAnswers = [...roundUserAnswers, userAnswers];
     const newRoundBotAnswers = [...roundBotAnswers, botAnswers || []];
     setRoundUserAnswers(newRoundUserAnswers);
@@ -1934,26 +2149,40 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     const totalQ = TOTAL_ROUNDS * QUESTIONS_PER_ROUND;
     const won = myTotal > botTotal;
     const draw = myTotal === botTotal;
+    const nR = roundUserAnswers.length;
+    const oppShort = shortBotDisplayName(opponentName);
+    const finalSummaries: BotRoundReview[] = Array.from({ length: nR }, (_, i) => ({
+      round: i + 1,
+      subcategoryName: roundSubcategories[i]?.name || '—',
+      groupNumber: roundSubcategories[i]?.group_number,
+      userAnswers: roundUserAnswers[i] || [],
+      botAnswers: roundBotAnswers[i] || [],
+      questions: roundQuestionsPlayed[i] || [],
+      userSelections: roundUserSelectionsPlayed[i] || [],
+    }));
 
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-        <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 40px', fontFamily: 'Helvetica, Arial, sans-serif', overflowY: 'auto' }}>
+        <div style={{ textAlign: 'center', maxWidth: '560px', width: '100%', margin: '0 auto' }}>
           <div style={{ fontSize: '52px', marginBottom: '16px' }}>{won ? '🏆' : draw ? '🤝' : '📚'}</div>
           <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
-          <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
+          <p style={{ color: colors.muted, marginBottom: '24px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '8px' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${won || draw ? colors.primary : 'rgba(0,0,0,0.12)'}`, padding: '20px 12px', borderRadius: '8px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myTotal}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
-            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '8px' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${!won && !draw ? colors.primary : 'rgba(0,0,0,0.12)'}`, padding: '20px 12px', borderRadius: '8px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>{opponentEmoji}</div>
-              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>{opponentName.split(' ')[1]?.toUpperCase() || 'GEGNER'}</div>
+              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>{shortBotDisplayName(opponentName).toUpperCase()}</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
+          </div>
+          <div style={{ textAlign: 'left' }}>
+            <BotDuelRoundsOverview rounds={finalSummaries} opponentShort={oppShort} />
           </div>
           <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
         </div>
@@ -1964,7 +2193,26 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   if (phase === 'intermediate') {
     const myTotal = roundUserAnswers.flat().filter(Boolean).length;
     const botTotal = roundBotAnswers.flat().filter(Boolean).length;
-    return <IntermediateScore myTotal={myTotal} botTotal={botTotal} roundsPlayed={currentRound} onContinue={handleIntermediateContinue} />;
+    const intSummaries: BotRoundReview[] = roundSubcategories.slice(0, currentRound).map((sub, i) => ({
+      round: i + 1,
+      subcategoryName: sub?.name || '—',
+      groupNumber: sub?.group_number,
+      userAnswers: roundUserAnswers[i] || [],
+      botAnswers: roundBotAnswers[i] || [],
+      questions: roundQuestionsPlayed[i] || [],
+      userSelections: roundUserSelectionsPlayed[i] || [],
+    }));
+    const oppShort = shortBotDisplayName(opponentName);
+    return (
+      <IntermediateScore
+        myTotal={myTotal}
+        botTotal={botTotal}
+        roundsPlayed={currentRound}
+        onContinue={handleIntermediateContinue}
+        roundSummaries={intSummaries}
+        opponentShort={oppShort}
+      />
+    );
   }
 
   if (phase === 'announcement' && announcementSub) {
@@ -2002,7 +2250,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
       }
       return (
         <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-          <p style={{ color: colors.muted, letterSpacing: '2px' }}>{opponentName.split(' ')[1]?.toUpperCase() || 'GEGNER'} WÄHLT...</p>
+          <p style={{ color: colors.muted, letterSpacing: '2px' }}>{shortBotDisplayName(opponentName).toUpperCase()} WÄHLT...</p>
         </div>
       );
     }
@@ -2061,7 +2309,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
           {roundSubcategories[currentRound - 1]?.name.toUpperCase()}
           {roundSubcategories[currentRound - 1]?.group_number && ` · GRUPPE ${roundSubcategories[currentRound - 1].group_number}`}
           {' · '}
-          {userChoosesThisRound ? 'DEINE WAHL' : `${(opponentName.split(' ')[1] || 'GEGNER').toUpperCase()} HAT GEWÄHLT`}
+          {userChoosesThisRound ? 'DEINE WAHL' : `${shortBotDisplayName(opponentName).toUpperCase()} HAT GEWÄHLT`}
         </span>
       </div>
       <QuizRound questions={questions} roundNumber={currentRound} totalRounds={TOTAL_ROUNDS} bot={bot} onRoundComplete={handleRoundComplete} />
@@ -2078,12 +2326,37 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
   const [opponentProfile, setOpponentProfile] = useState<any>(null);
   const [duelData, setDuelData] = useState<any>(duel);
   const [playedGroupIdsInDuel, setPlayedGroupIdsInDuel] = useState<string[]>([]);
-
-
+  const [reviewQuestionsByRound, setReviewQuestionsByRound] = useState<any[][]>([]);
 
   const isChallenger = duel.challenger_id === userId;
   const opponentId = isChallenger ? duel.opponent_id : duel.challenger_id;
   const roundsData = duelData.rounds_data || [];
+  const roundsGroupKey = JSON.stringify((duelData.rounds_data || []).map((r: any) => r.group_id));
+
+  useEffect(() => {
+    if (phase !== 'done') return;
+    const rounds = duelData.rounds_data || [];
+    if (!rounds.length) return;
+    let cancelled = false;
+    setReviewQuestionsByRound([]);
+    (async () => {
+      const all: any[][] = [];
+      for (const r of rounds) {
+        if (!r.group_id) {
+          all.push([]);
+          continue;
+        }
+        const { data: members } = await supabase
+          .from('question_group_members')
+          .select('position, questions(*)')
+          .eq('group_id', r.group_id)
+          .order('position', { ascending: true });
+        all.push(members?.map((m: any) => m.questions).filter(Boolean) || []);
+      }
+      if (!cancelled) setReviewQuestionsByRound(all);
+    })();
+    return () => { cancelled = true; };
+  }, [phase, duelData.id, roundsGroupKey]);
 
   const loadInit = async () => {
     setLoading(true);
@@ -2303,51 +2576,44 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     const won = myScore > oppScore;
     const draw = myScore === oppScore;
     const totalQ = TOTAL_ROUNDS * QUESTIONS_PER_ROUND;
+    const oppName = opponentProfile?.username || 'Gegner';
 
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
-        <div style={{ maxWidth: '500px', margin: '0 auto', textAlign: 'center', paddingTop: '40px' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 40px', fontFamily: 'Helvetica, Arial, sans-serif', overflowY: 'auto' }}>
+        <div style={{ maxWidth: '560px', margin: '0 auto', textAlign: 'center', paddingTop: '24px' }}>
           <div style={{ fontSize: '52px', marginBottom: '16px' }}>{won ? '🏆' : draw ? '🤝' : '📚'}</div>
           <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
-          <p style={{ color: colors.muted, marginBottom: '32px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
+          <p style={{ color: colors.muted, marginBottom: '24px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
-            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${won || draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '8px' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${won || draw ? colors.primary : 'rgba(0,0,0,0.12)'}`, padding: '20px 12px', borderRadius: '8px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>DU</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{myScore}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
-            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${!won && !draw ? colors.primary : '#C9B99A'}`, padding: '20px 12px', borderRadius: '8px' }}>
+            <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${!won && !draw ? colors.primary : 'rgba(0,0,0,0.12)'}`, padding: '20px 12px', borderRadius: '8px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>👤</div>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>{opponentProfile?.username?.toUpperCase() || 'GEGNER'}</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{oppScore}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
           </div>
-          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '16px', marginBottom: '24px', textAlign: 'left' }}>
-            {roundsData.map((round: any, roundIdx: number) => (
-              <div key={roundIdx} style={{ marginBottom: roundIdx < roundsData.length - 1 ? '16px' : 0, paddingBottom: roundIdx < roundsData.length - 1 ? '16px' : 0, borderBottom: roundIdx < roundsData.length - 1 ? '0.5px solid rgba(0,0,0,0.08)' : 'none' }}>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Runde {round.round} · {round.subcategory_name} · Gruppe {round.group_number}</div>
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '4px' }}>👤 Du</div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      {(isChallenger ? round.challenger_answers : round.opponent_answers)?.map((correct: boolean, qIdx: number) => (
-                        <div key={qIdx} style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: correct ? '#4CAF50' : '#E53935', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'white' }}>{correct ? '✓' : '✗'}</div>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '4px' }}>👤 {opponentProfile?.username || 'Gegner'}</div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      {(isChallenger ? round.opponent_answers : round.challenger_answers)?.map((correct: boolean, qIdx: number) => (
-                        <div key={qIdx} style={{ width: '20px', height: '20px', borderRadius: '3px', backgroundColor: correct ? '#4CAF50' : '#E53935', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: 'white' }}>{correct ? '✓' : '✗'}</div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div style={{ textAlign: 'left' }}>
+            {roundsData.length === 0 ? null : reviewQuestionsByRound.length === roundsData.length ? (
+              reviewQuestionsByRound.some(qs => qs.length > 0) ? (
+                <UserDuelRoundsOverview
+                  rounds={roundsData}
+                  questionsByRound={reviewQuestionsByRound}
+                  myName="Du"
+                  oppName={oppName}
+                  isChallenger={isChallenger}
+                />
+              ) : (
+                <p style={{ color: colors.muted, fontSize: '14px', textAlign: 'center', marginBottom: '24px' }}>Fragen für die Übersicht konnten nicht geladen werden.</p>
+              )
+            ) : (
+              <p style={{ color: colors.muted, fontSize: '14px', textAlign: 'center', marginBottom: '24px' }}>Runden und Fragen werden geladen…</p>
+            )}
           </div>
           <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
         </div>
