@@ -37,8 +37,8 @@ const inputStyle: React.CSSProperties = {
 const btnPrimary: React.CSSProperties = {
   width: '100%',
   padding: '18px 16px',
-  backgroundColor: '#6B1E2E',
-  color: '#F5F0E8',
+  backgroundColor: colors.primary,
+  color: colors.bg,
   fontSize: '16px',
   border: 'none',
   cursor: 'pointer',
@@ -53,8 +53,8 @@ const btnPrimary: React.CSSProperties = {
 const btnSecondary: React.CSSProperties = {
   ...btnPrimary,
   backgroundColor: 'transparent',
-  color: '#6B1E2E',
-  border: '2px solid #6B1E2E',
+  color: colors.primary,
+  border: `2px solid ${colors.primary}`,
 };
 
 const bots = [
@@ -68,6 +68,17 @@ function shortBotDisplayName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   if (parts.length <= 1) return parts[0] || 'Gegner';
   return parts.slice(1).join(' ');
+}
+
+/** Gleiches Balken-Icon wie im unteren Tab „Statistik“. */
+function TabStatsIcon({ size = 48, stroke = colors.primary }: { size?: number; stroke?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="12" width="4" height="8" />
+      <rect x="10" y="8" width="4" height="12" />
+      <rect x="17" y="4" width="4" height="16" />
+    </svg>
+  );
 }
 
 const QUESTIONS_PER_ROUND = 3;
@@ -795,8 +806,8 @@ function ReportedQuestions() {
   return (
     <div>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-        <button onClick={() => setFilter('open')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: filter === 'open' ? colors.primary : colors.light, color: filter === 'open' ? '#F5F0E8' : colors.text }}>Offen ({reports.filter(r => r.status === 'open').length})</button>
-        <button onClick={() => setFilter('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: filter === 'all' ? colors.primary : colors.light, color: filter === 'all' ? '#F5F0E8' : colors.text }}>Alle</button>
+        <button onClick={() => setFilter('open')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: filter === 'open' ? colors.primary : colors.light, color: filter === 'open' ? colors.bg : colors.text }}>Offen ({reports.filter(r => r.status === 'open').length})</button>
+        <button onClick={() => setFilter('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: filter === 'all' ? colors.primary : colors.light, color: filter === 'all' ? colors.bg : colors.text }}>Alle</button>
       </div>
 
       {reports.length === 0 ? (
@@ -825,7 +836,7 @@ function ReportedQuestions() {
                     <button onClick={() => updateStatus(report.id, 'dismissed')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.muted, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Ablehnen</button>
                   </>
                 )}
-                <button onClick={() => deleteQuestion(report.questions.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#E53935', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Frage löschen</button>
+                <button onClick={() => deleteQuestion(report.questions.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.primary, border: `1px solid ${colors.primary}`, borderRadius: '8px', cursor: 'pointer' }}>Frage löschen</button>
               </div>
             </div>
           ))}
@@ -1201,7 +1212,7 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
 
                     <button 
                       onClick={() => setReportingQuestion(q)} 
-                      style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', border: '1px solid #E53935', color: '#E53935', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}
+                      style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', border: `1px solid ${colors.primary}`, color: colors.primary, borderRadius: '8px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}
                     >
                       ⚠️ Frage melden
                     </button>
@@ -1659,10 +1670,16 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
 
   const q = questions[current];
   const options = useMemo(() => {
-    const baseOptions = q.type === 'true_false'
-      ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
-      : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
-    return shuffleOptions(baseOptions);
+    if (q.type === 'true_false') {
+      const base = [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }];
+      return shuffleOptions(base).map(o => ({ ...o, displayLetter: o.key }));
+    }
+    const baseOptions = [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
+    const shuffled = shuffleOptions(baseOptions);
+    return shuffled.map((o, i) => ({
+      ...o,
+      displayLetter: String.fromCharCode('A'.charCodeAt(0) + i),
+    }));
   }, [q]);
 
   const timerPct = (timeLeft / QUESTION_TIME_SECONDS) * 100;
@@ -1735,7 +1752,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
                 }}
               >
                 <span style={{ flex: 1, paddingRight: '8px' }}>
-                  <span style={{ fontWeight: '600', marginRight: '10px', opacity: 0.6 }}>{opt.key}.</span>{opt.label}
+                  <span style={{ fontWeight: '600', marginRight: '10px', opacity: 0.6 }}>{opt.displayLetter}.</span>{opt.label}
                 </span>
                 <span style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                   {showResult && isCorrect && <span style={{ fontSize: '18px' }}>✓</span>}
@@ -1947,7 +1964,14 @@ function UserDuelRoundsOverview({
 }
 
 function IntermediateScore({
-  myTotal, botTotal, roundsPlayed, onContinue, roundSummaries, opponentShort,
+  myTotal,
+  botTotal,
+  roundsPlayed,
+  onContinue,
+  roundSummaries,
+  opponentShort,
+  opponentName,
+  opponentEmoji,
 }: {
   myTotal: number;
   botTotal: number;
@@ -1955,11 +1979,15 @@ function IntermediateScore({
   onContinue: () => void;
   roundSummaries: BotRoundReview[];
   opponentShort: string;
+  opponentName: string;
+  opponentEmoji: string;
 }) {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 32px', fontFamily: 'Helvetica, Arial, sans-serif', overflowY: 'auto' }}>
       <div style={{ textAlign: 'center', maxWidth: '560px', width: '100%', margin: '0 auto' }}>
-        <div style={{ fontSize: '42px', marginBottom: '16px' }}>📊</div>
+        <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}>
+          <TabStatsIcon size={42} stroke={colors.primary} />
+        </div>
         <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>NACH {roundsPlayed} RUNDEN</h2>
         <p style={{ color: colors.muted, marginBottom: '24px', fontSize: '13px', letterSpacing: '1px' }}>ZWISCHENSTAND</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
@@ -1970,14 +1998,16 @@ function IntermediateScore({
             <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * QUESTIONS_PER_ROUND} richtig</div>
           </div>
           <div style={{ backgroundColor: '#FFFFFF', border: '2px solid rgba(0,0,0,0.08)', padding: '20px 12px', borderRadius: '8px' }}>
-            <div style={{ fontSize: '20px', marginBottom: '6px' }}>🤖</div>
-            <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>GEGNER</div>
+            <div style={{ fontSize: '22px', marginBottom: '6px', lineHeight: 1 }}>{opponentEmoji}</div>
+            <div style={{ fontSize: '11px', color: colors.text, letterSpacing: '0.5px', marginBottom: '6px', lineHeight: 1.35, fontWeight: 600 }}>{opponentName}</div>
             <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
             <div style={{ fontSize: '12px', color: colors.muted }}>von {roundsPlayed * QUESTIONS_PER_ROUND} richtig</div>
           </div>
         </div>
-        <BotDuelRoundsOverview rounds={roundSummaries} opponentShort={opponentShort} />
-        <button style={btnPrimary} onClick={onContinue}>Weiter</button>
+        <button type="button" style={{ ...btnPrimary, marginBottom: '24px' }} onClick={onContinue}>Weiter</button>
+        <div style={{ textAlign: 'left' }}>
+          <BotDuelRoundsOverview rounds={roundSummaries} opponentShort={opponentShort} />
+        </div>
       </div>
     </div>
   );
@@ -2188,7 +2218,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
             </div>
             <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${!won && !draw ? colors.primary : 'rgba(0,0,0,0.12)'}`, padding: '20px 12px', borderRadius: '8px' }}>
               <div style={{ fontSize: '20px', marginBottom: '6px' }}>{opponentEmoji}</div>
-              <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '1px', marginBottom: '6px' }}>{shortBotDisplayName(opponentName).toUpperCase()}</div>
+              <div style={{ fontSize: '11px', color: colors.text, letterSpacing: '0.5px', marginBottom: '6px', lineHeight: 1.35, fontWeight: 600 }}>{opponentName}</div>
               <div style={{ fontSize: '32px', fontWeight: 'bold', color: colors.primary }}>{botTotal}</div>
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
@@ -2223,6 +2253,8 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
         onContinue={handleIntermediateContinue}
         roundSummaries={intSummaries}
         opponentShort={oppShort}
+        opponentName={opponentName}
+        opponentEmoji={opponentEmoji}
       />
     );
   }
@@ -3003,7 +3035,7 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
       </div>
 
 <div style={{ marginTop: '32px' }}>
-  <button onClick={onLogout} style={{ ...btnSecondary, color: '#E53935', borderColor: '#E53935' }}>
+  <button onClick={onLogout} style={btnSecondary}>
     Abmelden
   </button>
   </div>
