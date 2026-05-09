@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabase';
 import * as XLSX from 'xlsx';
 
@@ -78,6 +78,15 @@ function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: num
   if (Math.random() < accuracy) return correctAnswer;
   const wrong = optionKeys.filter(o => o !== correctAnswer);
   return wrong[Math.floor(Math.random() * wrong.length)];
+}
+
+function shuffleOptions<T>(options: T[]): T[] {
+  const shuffled = [...options];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 }
 
 // Hilfsfunktion: Tiefste ungespielte Gruppe für einen oder zwei User
@@ -1649,9 +1658,12 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   };
 
   const q = questions[current];
-  const options = q.type === 'true_false'
-    ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
-    : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
+  const options = useMemo(() => {
+    const baseOptions = q.type === 'true_false'
+      ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
+      : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter(o => o.label);
+    return shuffleOptions(baseOptions);
+  }, [q]);
 
   const timerPct = (timeLeft / QUESTION_TIME_SECONDS) * 100;
   const timerGreenAbove = Math.round(QUESTION_TIME_SECONDS * (8 / 15));
