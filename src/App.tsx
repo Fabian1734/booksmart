@@ -2904,13 +2904,71 @@ function UserDuelCategorySelect({ opponent, userId, onBack, onStart }: { opponen
 }
 
 
-function Profile({ userId, onChallenge, onLogout }: { userId: string, onChallenge: (opp: any) => void, onLogout: () => void }) {  const [profile, setProfile] = useState<any>(null);
+interface BeforeInstallPromptEventStub extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+function Profile({ userId, onChallenge, onLogout }: { userId: string, onChallenge: (opp: any) => void, onLogout: () => void }) {
+  const [profile, setProfile] = useState<any>(null);
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [searchUsername, setSearchUsername] = useState('');
   const [searchResult, setSearchResult] = useState<any>(null);
   const [searchMsg, setSearchMsg] = useState('');
   const [searching, setSearching] = useState(false);
+  const [pwaDeferred, setPwaDeferred] = useState<BeforeInstallPromptEventStub | null>(null);
+  const [pwaStandalone, setPwaStandalone] = useState(false);
+  const [pwaInstallNote, setPwaInstallNote] = useState('');
+  const [pwaHelpOpen, setPwaHelpOpen] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(display-mode: standalone)');
+    const updateStandalone = () => {
+      const nav = window.navigator as Navigator & { standalone?: boolean };
+      setPwaStandalone(mq.matches || nav.standalone === true);
+    };
+    updateStandalone();
+    mq.addEventListener('change', updateStandalone);
+
+    const onBip = (e: Event) => {
+      e.preventDefault();
+      setPwaDeferred(e as BeforeInstallPromptEventStub);
+      setPwaInstallNote('');
+    };
+    const onInstalled = () => {
+      setPwaDeferred(null);
+      setPwaInstallNote('App wurde hinzugefügt.');
+    };
+    window.addEventListener('beforeinstallprompt', onBip);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      mq.removeEventListener('change', updateStandalone);
+      window.removeEventListener('beforeinstallprompt', onBip);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const isIosSafariLike =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  const handlePwaInstallClick = async () => {
+    if (!pwaDeferred) return;
+    setPwaInstallNote('');
+    try {
+      await pwaDeferred.prompt();
+      const { outcome } = await pwaDeferred.userChoice;
+      setPwaDeferred(null);
+      setPwaInstallNote(outcome === 'accepted' ? 'Wird zum Startbildschirm hinzugefügt …' : '');
+    } catch {
+      setPwaInstallNote('Installation konnte nicht gestartet werden.');
+    }
+  };
+
+  useEffect(() => {
+    if (pwaDeferred) setPwaHelpOpen(false);
+  }, [pwaDeferred]);
 
   useEffect(() => {
     supabase.from('profiles').select('*').eq('id', userId).single().then(({ data }) => setProfile(data));
@@ -2983,6 +3041,57 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
         </div>
       </div>
 
+      {/* Booksmart.ch als PWA */}
+      {pwaStandalone ? (
+        <div style={{ marginBottom: '24px', padding: '14px 16px', backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px' }}>
+          <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '8px' }}>BOOKSMART.CH</div>
+          <p style={{ fontSize: '14px', color: colors.text, margin: 0, lineHeight: 1.5 }}>Booksmart läuft als installierte App auf deinem Gerät.</p>
+        </div>
+      ) : (
+        <div style={{ marginBottom: '24px' }}>
+          <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '10px' }}>BOOKSMART.CH ALS APP</div>
+          <p style={{ fontSize: '13px', color: colors.text, lineHeight: 1.5, marginBottom: '14px' }}>
+            Lege eine Verknüpfung zu <strong>booksmart.ch</strong> auf dem Startbildschirm ab — öffnen wie eine normale App.
+          </p>
+          {pwaDeferred ? (
+            <button type="button" onClick={handlePwaInstallClick} style={btnPrimary}>
+              Booksmart.ch zum Startbildschirm hinzufügen
+            </button>
+          ) : (
+            <button type="button" onClick={() => setPwaHelpOpen(o => !o)} style={btnSecondary}>
+              {pwaHelpOpen ? 'Anleitung ausblenden' : 'Zum Startbildschirm hinzufügen (Anleitung)'}
+            </button>
+          )}
+          {pwaInstallNote ? (
+            <p style={{ fontSize: '13px', color: colors.muted, marginTop: '12px', marginBottom: 0 }}>{pwaInstallNote}</p>
+          ) : null}
+          {pwaHelpOpen && !pwaDeferred ? (
+            <div style={{ marginTop: '14px', padding: '14px 16px', backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', fontSize: '13px', color: colors.text, lineHeight: 1.55 }}>
+              {isIosSafariLike ? (
+                <>
+                  <strong style={{ display: 'block', marginBottom: '6px' }}>iPhone / iPad (Safari)</strong>
+                  <ol style={{ margin: '0 0 0 18px', padding: 0 }}>
+                    <li>Öffne <strong>https://booksmart.ch</strong> in Safari.</li>
+                    <li>Tippe auf die <strong>Teilen</strong>-Taste (Quadrat mit Pfeil nach oben).</li>
+                    <li>Wähle <strong>«Zum Home-Bildschirm»</strong> und bestätige mit «Hinzufügen».</li>
+                  </ol>
+                </>
+              ) : (
+                <>
+                  <strong style={{ display: 'block', marginBottom: '6px' }}>Android und Desktop (Chrome / Edge)</strong>
+                  <ol style={{ margin: '0 0 0 18px', padding: 0 }}>
+                    <li>Öffne <strong>https://booksmart.ch</strong> im Browser.</li>
+                    <li>Am ehesten in <strong>Chrome</strong>: Menü (⋮) → «App installieren» oder «Zum Startbildschirm hinzufügen».</li>
+                    <li>Alternativ: Installations-Symbol in der Adressleiste (falls sichtbar).</li>
+                  </ol>
+                  <p style={{ margin: '12px 0 0 0', color: colors.muted, fontSize: '12px' }}>Wenn du hier keinen Dialog siehst, nutze die Schritte oben — auf dem iPhone immer über Safari.</p>
+                </>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {/* Spieler suchen */}
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '10px' }}>SPIELER SUCHEN</div>
@@ -3034,12 +3143,12 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
         })}
       </div>
 
-<div style={{ marginTop: '32px' }}>
-  <button onClick={onLogout} style={btnSecondary}>
-    Abmelden
-  </button>
-  </div>
-</div>
+      <div style={{ marginTop: '32px' }}>
+        <button type="button" onClick={onLogout} style={btnSecondary}>
+          Abmelden
+        </button>
+      </div>
+    </div>
   );
 }
 
