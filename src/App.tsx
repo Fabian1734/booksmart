@@ -749,6 +749,12 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
         </div>
 
         <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
+          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>Fragen-Bewertungen</h3>
+          <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>Sterne-Bewertungen (1–5) von Spielern nach Duellen</p>
+          <QuestionRatingsInbox />
+        </div>
+
+        <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
           <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>3er-Gruppen verwalten</h3>
           <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>
             Erstellt automatisch 3er-Gruppen aus allen ungruppierten Fragen. Jede Gruppe bekommt eine aufsteigende Nummer pro Subkategorie.
@@ -763,6 +769,99 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function QuestionRatingsInbox() {
+  const [ratings, setRatings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    loadRatings();
+  }, []);
+
+  const loadRatings = async () => {
+    setLoading(true);
+    setLoadError('');
+    const { data, error } = await supabase
+      .from('question_ratings')
+      .select(`
+        id,
+        rating,
+        created_at,
+        updated_at,
+        questions ( question_text ),
+        rater:profiles!question_ratings_user_id_fkey ( username )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error) {
+      const missingTable = error.code === 'PGRST205' || error.message?.includes('question_ratings');
+      setLoadError(
+        missingTable
+          ? 'Tabelle question_ratings fehlt. Bitte supabase/question_ratings.sql im Supabase SQL Editor ausführen.'
+          : `Fehler beim Laden: ${error.message}`,
+      );
+      setRatings([]);
+    } else {
+      setRatings(data || []);
+    }
+    setLoading(false);
+  };
+
+  const avg = ratings.length
+    ? (ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length).toFixed(1)
+    : null;
+
+  if (loading) return <p style={{ color: colors.muted, fontSize: '13px' }}>Lade Bewertungen…</p>;
+
+  return (
+    <div>
+      {loadError ? (
+        <div style={{ backgroundColor: '#F7F2EB', border: '1px solid #A68A64', borderRadius: '8px', padding: '14px', marginBottom: '16px', fontSize: '13px', color: colors.text, lineHeight: 1.5 }}>
+          {loadError}
+        </div>
+      ) : null}
+      {!loadError && (
+        <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>
+          {ratings.length} Bewertung{ratings.length === 1 ? '' : 'en'}
+          {avg ? ` · Ø ${avg} Sterne` : ''}
+          {ratings.length >= 200 ? ' (neueste 200)' : ''}
+        </p>
+      )}
+      {ratings.length === 0 && !loadError ? (
+        <p style={{ color: colors.muted, fontSize: '13px' }}>Noch keine Bewertungen</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '480px', overflowY: 'auto' }}>
+          {ratings.map((row) => (
+            <div key={row.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '18px', letterSpacing: '2px', color: '#B8860B', flexShrink: 0 }}>
+                  {'★'.repeat(row.rating)}{'☆'.repeat(5 - row.rating)}
+                </span>
+                <span style={{ fontSize: '12px', color: colors.muted, textAlign: 'right' }}>
+                  {row.rater?.username || 'Unbekannt'}
+                  <br />
+                  {new Date(row.updated_at || row.created_at).toLocaleString('de-CH')}
+                </span>
+              </div>
+              <div style={{ fontSize: '14px', color: colors.text, lineHeight: 1.45 }}>
+                {row.questions?.question_text || '— Frage gelöscht —'}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={loadRatings}
+        style={{ ...btnSecondary, marginTop: '16px', width: 'auto', padding: '10px 20px', fontSize: '13px' }}
+      >
+        Aktualisieren
+      </button>
     </div>
   );
 }
@@ -1484,11 +1583,9 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
   );
 }
 
-const BOT_PICK_STEPS = 5;
 const BOT_PICK_DURATION_MS = 4500;
 
 function BotTurnProgressScreen({ emoji, name, subcategoryName, onComplete }: { emoji: string; name: string; subcategoryName: string; onComplete: () => void }) {
-  const [step, setStep] = useState(1);
   const [progressPct, setProgressPct] = useState(0);
   const completedRef = React.useRef(false);
   const onCompleteRef = React.useRef(onComplete);
@@ -1502,7 +1599,6 @@ function BotTurnProgressScreen({ emoji, name, subcategoryName, onComplete }: { e
     const tick = (now: number) => {
       const t = Math.min(1, (now - startTime) / BOT_PICK_DURATION_MS);
       setProgressPct(t * 100);
-      setStep(Math.min(BOT_PICK_STEPS, Math.max(1, Math.ceil(t * BOT_PICK_STEPS))));
       if (t < 1) {
         raf = requestAnimationFrame(tick);
       } else if (!completedRef.current) {
@@ -1522,9 +1618,7 @@ function BotTurnProgressScreen({ emoji, name, subcategoryName, onComplete }: { e
         <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '28px', fontFamily: fontBody, lineHeight: 1.5 }}>
           <strong>{name}</strong> hat <strong style={{ color: colors.primary }}>{subcategoryName}</strong> gewählt
         </p>
-        <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '28px' }}>STUFE {step} VON {BOT_PICK_STEPS}</p>
-
-        <div style={{ height: '6px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden', marginBottom: '20px' }}>
+        <div style={{ height: '6px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden' }}>
           <div
             style={{
               height: '100%',
@@ -1534,26 +1628,6 @@ function BotTurnProgressScreen({ emoji, name, subcategoryName, onComplete }: { e
               transition: 'width 0.08s linear',
             }}
           />
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '6px' }}>
-          {Array.from({ length: BOT_PICK_STEPS }, (_, i) => {
-            const n = i + 1;
-            const active = n <= step;
-            return (
-              <div
-                key={n}
-                style={{
-                  flex: 1,
-                  height: '4px',
-                  borderRadius: '2px',
-                  backgroundColor: active ? colors.primary : colors.light,
-                  opacity: active ? 1 : 0.45,
-                  transition: 'background-color 0.2s, opacity 0.2s',
-                }}
-              />
-            );
-          })}
         </div>
       </div>
     </div>
@@ -1827,21 +1901,37 @@ function QuestionStarRating({ questionId, userId }: { questionId: string; userId
   }, [questionId, userId]);
 
   const saveRating = async (value: number) => {
-    if (!questionId) return;
+    if (!questionId || !userId) return;
     setSaving(true);
     setNote('');
-    const { error } = await supabase.from('question_ratings').upsert(
-      {
-        question_id: questionId,
-        user_id: userId,
-        rating: value,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'question_id,user_id' },
-    );
+    const updatedAt = new Date().toISOString();
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('question_ratings')
+      .select('id')
+      .eq('question_id', questionId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (fetchError) {
+      setSaving(false);
+      const missingTable = fetchError.code === 'PGRST205' || fetchError.message?.includes('question_ratings');
+      setNote(missingTable ? 'Bewertungen: Tabelle fehlt (SQL in Supabase ausführen)' : 'Speichern fehlgeschlagen');
+      return;
+    }
+
+    const { error } = existing?.id
+      ? await supabase.from('question_ratings').update({ rating: value, updated_at: updatedAt }).eq('id', existing.id)
+      : await supabase.from('question_ratings').insert({
+          question_id: questionId,
+          user_id: userId,
+          rating: value,
+        });
+
     setSaving(false);
     if (error) {
-      setNote('Speichern fehlgeschlagen');
+      const missingTable = error.code === 'PGRST205' || error.message?.includes('question_ratings');
+      setNote(missingTable ? 'Bewertungen: Tabelle fehlt (SQL in Supabase ausführen)' : 'Speichern fehlgeschlagen');
       return;
     }
     setRating(value);

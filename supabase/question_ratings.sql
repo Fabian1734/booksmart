@@ -1,4 +1,4 @@
--- In Supabase SQL Editor ausführen (einmalig), falls Tabelle noch fehlt.
+-- In Supabase: SQL Editor → New query → Run (einmalig)
 
 CREATE TABLE IF NOT EXISTS question_ratings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -11,9 +11,11 @@ CREATE TABLE IF NOT EXISTS question_ratings (
 );
 
 CREATE INDEX IF NOT EXISTS question_ratings_question_id_idx ON question_ratings(question_id);
+CREATE INDEX IF NOT EXISTS question_ratings_created_at_idx ON question_ratings(created_at DESC);
 
 ALTER TABLE question_ratings ENABLE ROW LEVEL SECURITY;
 
+-- Spieler: eigene Bewertung lesen / anlegen / ändern
 DROP POLICY IF EXISTS "question_ratings_select_own" ON question_ratings;
 CREATE POLICY "question_ratings_select_own" ON question_ratings
   FOR SELECT USING (auth.uid() = user_id);
@@ -24,4 +26,14 @@ CREATE POLICY "question_ratings_insert_own" ON question_ratings
 
 DROP POLICY IF EXISTS "question_ratings_update_own" ON question_ratings;
 CREATE POLICY "question_ratings_update_own" ON question_ratings
-  FOR UPDATE USING (auth.uid() = user_id);
+  FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Admin: alle Bewertungen einsehen (profiles.is_admin = true)
+DROP POLICY IF EXISTS "question_ratings_admin_select" ON question_ratings;
+CREATE POLICY "question_ratings_admin_select" ON question_ratings
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.is_admin = true
+    )
+  );
