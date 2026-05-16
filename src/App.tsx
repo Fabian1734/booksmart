@@ -2245,7 +2245,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: `1px solid ${colors.light}`, paddingBottom: '0', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {([
             { id: 'stats' as const, label: 'MEINE STATS' },
-            { id: 'books' as const, label: 'BÜCHER' },
+            { id: 'books' as const, label: 'Book Recommender' },
             { id: 'leaderboard' as const, label: 'RANGLISTE' },
             { id: 'myduels' as const, label: 'MEINE DUELLE' },
           ]).map(t => (
@@ -2404,7 +2404,7 @@ function BotCategoryPickFlow({
   onComplete: () => void;
 }) {
   const [uiPhase, setUiPhase] = useState<'chosen' | 'playing'>('chosen');
-  const [progressPct, setProgressPct] = useState(0);
+  const [barFill, setBarFill] = useState(false);
   const completedRef = React.useRef(false);
   const onCompleteRef = React.useRef(onComplete);
   onCompleteRef.current = onComplete;
@@ -2417,23 +2417,25 @@ function BotCategoryPickFlow({
   useEffect(() => {
     if (uiPhase !== 'playing') return;
     completedRef.current = false;
-    const startTime = performance.now();
-    let raf = 0;
+    setBarFill(false);
 
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - startTime) / BOT_PLAYING_DURATION_MS);
-      setProgressPct(t * 100);
-      if (t < 1) {
-        raf = requestAnimationFrame(tick);
-      } else if (!completedRef.current) {
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setBarFill(true));
+    });
+
+    const timer = window.setTimeout(() => {
+      if (!completedRef.current) {
         completedRef.current = true;
-        setProgressPct(100);
         onCompleteRef.current();
       }
-    };
+    }, BOT_PLAYING_DURATION_MS);
 
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      window.clearTimeout(timer);
+    };
   }, [uiPhase]);
 
   if (uiPhase === 'chosen') {
@@ -2456,14 +2458,17 @@ function BotCategoryPickFlow({
         <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '28px', fontFamily: fontBody }}>
           <strong>{name}</strong> spielt
         </p>
-        <div style={{ height: '6px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden' }}>
+        <div style={{ height: '6px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden', width: '100%' }}>
           <div
             style={{
               height: '100%',
-              width: `${progressPct}%`,
+              width: '100%',
               backgroundColor: colors.primary,
               borderRadius: '3px',
-              transition: 'width 0.08s linear',
+              transform: barFill ? 'scaleX(1)' : 'scaleX(0)',
+              transformOrigin: 'left center',
+              transition: `transform ${BOT_PLAYING_DURATION_MS}ms linear`,
+              willChange: 'transform',
             }}
           />
         </div>
