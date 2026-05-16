@@ -743,7 +743,8 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
         </div>
 
         <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
-          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>Gemeldete Fragen</h3>
+          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>Reporting Inbox</h3>
+          <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>Gemeldete Fragen von Spielern</p>
           <ReportedQuestions />
         </div>
 
@@ -1083,8 +1084,6 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
   const [loading, setLoading] = useState(true);
   const [questions, setQuestions] = useState<any[][]>([]);
   const [reportingQuestion, setReportingQuestion] = useState<any>(null);
-  const [reportReason, setReportReason] = useState('');
-  const [reportSuccess, setReportSuccess] = useState('');
 
   const isChallenger = duel.challenger_id === userId;
   const opponent = isChallenger ? duel.opponent : duel.challenger;
@@ -1114,27 +1113,6 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
     
     setQuestions(allRoundQuestions);
     setLoading(false);
-  };
-
-  const submitReport = async () => {
-    if (!reportingQuestion || !reportReason.trim()) return;
-    
-    const { error } = await supabase.from('question_reports').insert({
-      question_id: reportingQuestion.id,
-      reported_by: userId,
-      reason: reportReason.trim(),
-    });
-
-    if (error) {
-      setReportSuccess('❌ Fehler beim Senden');
-    } else {
-      setReportSuccess('✅ Frage wurde gemeldet');
-      setTimeout(() => {
-        setReportingQuestion(null);
-        setReportReason('');
-        setReportSuccess('');
-      }, 2000);
-    }
   };
 
   if (loading) return (
@@ -1224,25 +1202,13 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
         })}
       </div>
 
-      {reportingQuestion && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 }}>
-          <div style={{ backgroundColor: colors.bg, borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '100%' }}>
-            <h3 style={{ fontSize: '18px', color: colors.text, marginBottom: '12px' }}>Frage melden</h3>
-            <p style={{ fontSize: '14px', color: colors.text, marginBottom: '8px', lineHeight: '1.4' }}>{reportingQuestion.question_text}</p>
-            <textarea 
-              value={reportReason} 
-              onChange={e => setReportReason(e.target.value)}
-              placeholder="Was ist das Problem mit dieser Frage?"
-              style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }}
-            />
-            {reportSuccess && <div style={{ fontSize: '14px', marginBottom: '12px', color: reportSuccess.startsWith('✅') ? '#2D6A4F' : '#A68A64' }}>{reportSuccess}</div>}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button style={{ ...btnPrimary, marginBottom: 0 }} onClick={submitReport}>Melden</button>
-              <button style={{ ...btnSecondary, marginBottom: 0 }} onClick={() => { setReportingQuestion(null); setReportReason(''); setReportSuccess(''); }}>Abbrechen</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {reportingQuestion ? (
+        <QuestionReportModal
+          question={{ id: reportingQuestion.id, question_text: reportingQuestion.question_text }}
+          userId={userId}
+          onClose={() => setReportingQuestion(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1521,7 +1487,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
 const BOT_PICK_STEPS = 5;
 const BOT_PICK_DURATION_MS = 4500;
 
-function BotTurnProgressScreen({ emoji, name, onComplete }: { emoji: string; name: string; onComplete: () => void }) {
+function BotTurnProgressScreen({ emoji, name, subcategoryName, onComplete }: { emoji: string; name: string; subcategoryName: string; onComplete: () => void }) {
   const [step, setStep] = useState(1);
   const [progressPct, setProgressPct] = useState(0);
   const completedRef = React.useRef(false);
@@ -1553,7 +1519,9 @@ function BotTurnProgressScreen({ emoji, name, onComplete }: { emoji: string; nam
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: fontBody }}>
       <div style={{ textAlign: 'center', maxWidth: '420px', width: '100%' }}>
         <div style={{ fontSize: 'clamp(52px, 16vw, 80px)', marginBottom: '20px', lineHeight: 1 }}>{emoji}</div>
-        <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '8px', fontFamily: fontBody }}>{name} spielt</p>
+        <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '28px', fontFamily: fontBody, lineHeight: 1.5 }}>
+          <strong>{name}</strong> hat <strong style={{ color: colors.primary }}>{subcategoryName}</strong> gewählt
+        </p>
         <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '28px' }}>STUFE {step} VON {BOT_PICK_STEPS}</p>
 
         <div style={{ height: '6px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden', marginBottom: '20px' }}>
@@ -1836,6 +1804,164 @@ function formatSelectionLabel(sel: string | undefined): string {
   return sel;
 }
 
+function QuestionStarRating({ questionId, userId }: { questionId: string; userId: string }) {
+  const [rating, setRating] = useState<number | null>(null);
+  const [hover, setHover] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (!questionId || !userId) return;
+    let cancelled = false;
+    supabase
+      .from('question_ratings')
+      .select('rating')
+      .eq('question_id', questionId)
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (!error && data) setRating(data.rating);
+      });
+    return () => { cancelled = true; };
+  }, [questionId, userId]);
+
+  const saveRating = async (value: number) => {
+    if (!questionId) return;
+    setSaving(true);
+    setNote('');
+    const { error } = await supabase.from('question_ratings').upsert(
+      {
+        question_id: questionId,
+        user_id: userId,
+        rating: value,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'question_id,user_id' },
+    );
+    setSaving(false);
+    if (error) {
+      setNote('Speichern fehlgeschlagen');
+      return;
+    }
+    setRating(value);
+    setNote('Gespeichert');
+    setTimeout(() => setNote(''), 1500);
+  };
+
+  const display = hover || rating || 0;
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
+      <span style={{ fontSize: '12px', color: colors.muted, marginRight: '4px' }}>Bewerten</span>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          disabled={saving}
+          onMouseEnter={() => setHover(n)}
+          onMouseLeave={() => setHover(0)}
+          onClick={() => saveRating(n)}
+          aria-label={`${n} von 5 Sternen`}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: saving ? 'default' : 'pointer',
+            fontSize: '22px',
+            lineHeight: 1,
+            padding: '0 2px',
+            color: display >= n ? '#B8860B' : 'rgba(0,0,0,0.15)',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          ★
+        </button>
+      ))}
+      {rating ? <span style={{ fontSize: '11px', color: colors.muted, marginLeft: '4px' }}>{rating}/5</span> : null}
+      {note ? <span style={{ fontSize: '11px', color: colors.muted, width: '100%' }}>{note}</span> : null}
+    </div>
+  );
+}
+
+function QuestionReportModal({
+  question,
+  userId,
+  onClose,
+}: {
+  question: { id: string; question_text: string };
+  userId: string;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [status, setStatus] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    if (!reason.trim()) {
+      setStatus('Bitte kurz beschreiben, was das Problem ist.');
+      return;
+    }
+    setSubmitting(true);
+    setStatus('');
+    const { error } = await supabase.from('question_reports').insert({
+      question_id: question.id,
+      reported_by: userId,
+      reason: reason.trim(),
+      status: 'open',
+    });
+    setSubmitting(false);
+    if (error) {
+      setStatus('❌ Meldung konnte nicht gesendet werden.');
+      return;
+    }
+    setStatus('✅ Frage wurde gemeldet. Danke!');
+    setTimeout(onClose, 1800);
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px',
+        zIndex: 1000,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{ backgroundColor: colors.bg, borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '100%' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 style={{ fontSize: '18px', color: colors.text, marginBottom: '12px', fontFamily: fontBody }}>Frage melden</h3>
+        <p style={{ fontSize: '14px', color: colors.text, marginBottom: '12px', lineHeight: 1.5 }}>{question.question_text}</p>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Was ist das Problem mit dieser Frage?"
+          style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }}
+        />
+        {status ? (
+          <p style={{ fontSize: '13px', marginBottom: '12px', color: status.startsWith('✅') ? '#2D6A4F' : '#A68A64' }}>{status}</p>
+        ) : null}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button type="button" style={{ ...btnPrimary, marginBottom: 0, opacity: submitting ? 0.6 : 1 }} onClick={submit} disabled={submitting}>
+            {submitting ? 'Senden…' : 'Melden'}
+          </button>
+          <button type="button" style={{ ...btnSecondary, marginBottom: 0 }} onClick={onClose} disabled={submitting}>
+            Abbrechen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QuestionReviewBlock({
   q,
   questionLabel,
@@ -1847,6 +1973,7 @@ function QuestionReviewBlock({
   oppName,
   showOpponent,
   headerRightExtra,
+  userId,
 }: {
   q: any;
   questionLabel: string;
@@ -1858,8 +1985,10 @@ function QuestionReviewBlock({
   oppName: string;
   showOpponent: boolean;
   headerRightExtra?: string;
+  userId?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const options = q.type === 'true_false'
     ? [{ key: 'Wahr', label: 'Wahr' }, { key: 'Falsch', label: 'Falsch' }]
     : [{ key: 'A', label: q.option_a }, { key: 'B', label: q.option_b }, { key: 'C', label: q.option_c }, { key: 'D', label: q.option_d }].filter((o: { label: string }) => o.label);
@@ -1907,8 +2036,37 @@ function QuestionReviewBlock({
               );
             })}
           </div>
+          {userId && q?.id ? (
+            <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <QuestionStarRating questionId={q.id} userId={userId} />
+              <button
+                type="button"
+                onClick={() => setReportOpen(true)}
+                style={{
+                  fontSize: '12px',
+                  padding: '8px 12px',
+                  alignSelf: 'flex-start',
+                  backgroundColor: 'transparent',
+                  border: `1px solid ${colors.primary}`,
+                  color: colors.primary,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontFamily: fontBody,
+                }}
+              >
+                Frage melden
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
+      {reportOpen && userId && q?.id ? (
+        <QuestionReportModal
+          question={{ id: q.id, question_text: q.question_text }}
+          userId={userId}
+          onClose={() => setReportOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1923,7 +2081,7 @@ type BotRoundReview = {
   userSelections: string[];
 };
 
-function BotDuelRoundsOverview({ rounds, opponentShort }: { rounds: BotRoundReview[]; opponentShort: string }) {
+function BotDuelRoundsOverview({ rounds, opponentShort, userId }: { rounds: BotRoundReview[]; opponentShort: string; userId: string }) {
   if (rounds.length === 0) return null;
   return (
     <div style={{ textAlign: 'left', marginBottom: '24px' }}>
@@ -1956,6 +2114,7 @@ function BotDuelRoundsOverview({ rounds, opponentShort }: { rounds: BotRoundRevi
               oppName={opponentShort}
               showOpponent={false}
               headerRightExtra={` · ${opponentShort} ${r.botAnswers[qi] ? '✓' : '✗'}`}
+              userId={userId}
             />
           ))}
         </div>
@@ -1970,12 +2129,14 @@ function UserDuelRoundsOverview({
   myName,
   oppName,
   isChallenger,
+  userId,
 }: {
   rounds: any[];
   questionsByRound: any[][];
   myName: string;
   oppName: string;
   isChallenger: boolean;
+  userId: string;
 }) {
   if (!rounds.length) return null;
   return (
@@ -2016,6 +2177,7 @@ function UserDuelRoundsOverview({
                 myName={myName}
                 oppName={oppName}
                 showOpponent
+                userId={userId}
               />
             ))}
           </div>
@@ -2034,6 +2196,7 @@ function IntermediateScore({
   opponentShort,
   opponentName,
   opponentEmoji,
+  userId,
 }: {
   myTotal: number;
   botTotal: number;
@@ -2043,6 +2206,7 @@ function IntermediateScore({
   opponentShort: string;
   opponentName: string;
   opponentEmoji: string;
+  userId: string;
 }) {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 32px', fontFamily: 'Helvetica, Arial, sans-serif', overflowY: 'auto' }}>
@@ -2068,7 +2232,7 @@ function IntermediateScore({
         </div>
         <button type="button" style={{ ...btnPrimary, marginBottom: '24px' }} onClick={onContinue}>Weiter</button>
         <div style={{ textAlign: 'left' }}>
-          <BotDuelRoundsOverview rounds={roundSummaries} opponentShort={opponentShort} />
+          <BotDuelRoundsOverview rounds={roundSummaries} opponentShort={opponentShort} userId={userId} />
         </div>
       </div>
     </div>
@@ -2085,13 +2249,13 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   const [roundQuestionsPlayed, setRoundQuestionsPlayed] = useState<any[][]>([]);
   const [roundUserSelectionsPlayed, setRoundUserSelectionsPlayed] = useState<string[][]>([]);
   const [done, setDone] = useState(false);
-  const [phase, setPhase] = useState<'selectSub' | 'announcement' | 'playing' | 'intermediate'>('selectSub');
+  const [phase, setPhase] = useState<'selectSub' | 'playing' | 'intermediate'>('selectSub');
   const [userPickOptions, setUserPickOptions] = useState<any[]>([]);
   const [eligibleBotSubs, setEligibleBotSubs] = useState<any[]>([]);
   const [pickOptionsLoading, setPickOptionsLoading] = useState(false);
-  const [announcementSub, setAnnouncementSub] = useState<any>(null);
   const [playedGroupsCache, setPlayedGroupsCache] = useState<string[]>([]);
   const [botCategoryPicking, setBotCategoryPicking] = useState(false);
+  const [botPickedSub, setBotPickedSub] = useState<any>(null);
   const botCategoryPickStarted = React.useRef(false);
 
   const opponentName = bots.find(b => b.level === duel.bot_level)?.name || 'Bot';
@@ -2117,9 +2281,12 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   useEffect(() => {
     if (phase !== 'selectSub' || userChoosesThisRound || eligibleBotSubs.length === 0 || pickOptionsLoading) {
       setBotCategoryPicking(false);
+      setBotPickedSub(null);
       return;
     }
     botCategoryPickStarted.current = false;
+    const randomSub = eligibleBotSubs[Math.floor(Math.random() * eligibleBotSubs.length)];
+    setBotPickedSub(randomSub);
     setBotCategoryPicking(true);
   }, [phase, userChoosesThisRound, eligibleBotSubs, currentRound, pickOptionsLoading]);
 
@@ -2159,15 +2326,14 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   };
 
   const handleBotCategoryPickComplete = React.useCallback(() => {
-    if (!eligibleBotSubs.length || botCategoryPickStarted.current) return;
+    if (!botPickedSub || botCategoryPickStarted.current) return;
     botCategoryPickStarted.current = true;
     setBotCategoryPicking(false);
-    const randomSub = eligibleBotSubs[Math.floor(Math.random() * eligibleBotSubs.length)];
-    setAnnouncementSub(randomSub);
-    setPhase('announcement');
-    setTimeout(() => { loadQuestionsForSub(randomSub); }, 4000);
+    const sub = botPickedSub;
+    setBotPickedSub(null);
+    loadQuestionsForSub(sub);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eligibleBotSubs]);
+  }, [botPickedSub]);
 
   const findBestGroupWithCache = async (subcategoryId: string, userIds: string[], localCache: string[]) => {
     const { data: allGroups } = await supabase
@@ -2281,7 +2447,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
             </div>
           </div>
           <div style={{ textAlign: 'left' }}>
-            <BotDuelRoundsOverview rounds={finalSummaries} opponentShort={oppShort} />
+            <BotDuelRoundsOverview rounds={finalSummaries} opponentShort={oppShort} userId={userId} />
           </div>
           <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
         </div>
@@ -2312,20 +2478,8 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
         opponentShort={oppShort}
         opponentName={opponentName}
         opponentEmoji={opponentEmoji}
+        userId={userId}
       />
-    );
-  }
-
-  if (phase === 'announcement' && announcementSub) {
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif', padding: '20px' }}>
-        <div style={{ textAlign: 'center', maxWidth: '500px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>{opponentEmoji}</div>
-          <h2 style={{ color: colors.primary, fontSize: 'clamp(18px, 5vw, 22px)', marginBottom: '12px', letterSpacing: '1px' }}>{opponentName.toUpperCase()}</h2>
-          <p style={{ color: colors.text, fontSize: '16px', marginBottom: '8px' }}>hat gewählt:</p>
-          <p style={{ color: colors.primary, fontSize: 'clamp(18px, 4vw, 20px)', fontWeight: 'bold', letterSpacing: '1px' }}>{announcementSub.name}</p>
-        </div>
-      </div>
     );
   }
 
@@ -2346,8 +2500,15 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
           </div>
         );
       }
-      if (botCategoryPicking) {
-        return <BotTurnProgressScreen emoji={opponentEmoji} name={opponentName} onComplete={handleBotCategoryPickComplete} />;
+      if (botCategoryPicking && botPickedSub) {
+        return (
+          <BotTurnProgressScreen
+            emoji={opponentEmoji}
+            name={opponentName}
+            subcategoryName={botPickedSub.name}
+            onComplete={handleBotCategoryPickComplete}
+          />
+        );
       }
       return (
         <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif' }}>
@@ -2707,6 +2868,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
                   myName="Du"
                   oppName={oppName}
                   isChallenger={isChallenger}
+                  userId={userId}
                 />
               ) : (
                 <p style={{ color: colors.muted, fontSize: '14px', textAlign: 'center', marginBottom: '24px' }}>Fragen für die Übersicht konnten nicht geladen werden.</p>
