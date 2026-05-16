@@ -322,11 +322,178 @@ function AddBook() {
 }
 
 // EXCEL EXPORT/IMPORT KOMPONENTE
+const EXPORT_PAGE_SIZE = 1000;
+const RATING_FETCH_CHUNK = 150;
+
+type ExportScope = 'subcategory' | 'category' | 'all';
+
+async function fetchPaginated<T>(
+  fetchPage: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await fetchPage(from, from + EXPORT_PAGE_SIZE - 1);
+    if (error) throw error;
+    const batch = data || [];
+    all.push(...batch);
+    if (batch.length < EXPORT_PAGE_SIZE) break;
+    from += EXPORT_PAGE_SIZE;
+  }
+  return all;
+}
+
+async function fetchRatingsForQuestions(questionIds: string[]) {
+  if (questionIds.length === 0) return [];
+  const all: any[] = [];
+  for (let i = 0; i < questionIds.length; i += RATING_FETCH_CHUNK) {
+    const chunk = questionIds.slice(i, i + RATING_FETCH_CHUNK);
+    const { data, error } = await supabase
+      .from('question_ratings')
+      .select(`
+        question_id,
+        rating,
+        created_at,
+        updated_at,
+        rater:profiles!question_ratings_user_id_fkey ( username )
+      `)
+      .in('question_id', chunk);
+    if (error) {
+      const missingTable = error.code === 'PGRST205' || error.message?.includes('question_ratings');
+      if (missingTable) return [];
+      throw error;
+    }
+    all.push(...(data || []));
+  }
+  return all;
+}
+
+function questionExportMeta(q: any) {
+  const sub = q.subcategories;
+  return {
+    category_name: sub?.categories?.name || '',
+    subcategory_name: sub?.name || '',
+  };
+}
+
+function answerSuccessPct(correct: number, wrong: number): string {
+  const total = correct + wrong;
+  if (total === 0) return '';
+  return `${Math.round((correct / total) * 100)}`;
+}
+
+async function recordQuestionAnswer(questionId: string, isCorrect: boolean) {
+  const { error } = await supabase.rpc('record_question_answer', {
+    p_question_id: questionId,
+    p_is_correct: isCorrect,
+  });
+  if (error) {
+    const missing = error.code === 'PGRST202' || error.message?.includes('record_question_answer');
+    if (!missing) console.warn('record_question_answer:', error.message);
+  }
+}
+
+async function fetchAnswerStatsForQuestions(questionIds: string[]) {
+  if (questionIds.length === 0) return new Map<string, { correct_count: number; wrong_count: number }>();
+  const map = new Map<string, { correct_count: number; wrong_count: number }>();
+  for (let i = 0; i < questionIds.length; i += RATING_FETCH_CHUNK) {
+    const chunk = questionIds.slice(i, i + RATING_FETCH_CHUNK);
+    const { data, error } = await supabase
+      .from('question_answer_stats')
+      .select('question_id, correct_count, wrong_count')
+      .in('question_id', chunk);
+    if (error) {
+      const missingTable = error.code === 'PGRST205' || error.message?.includes('question_answer_stats');
+      if (missingTable) return map;
+      throw error;
+    }
+    data?.forEach(row => map.set(row.question_id, row));
+  }
+  return map;
+}
+
+
+function normalizeImportName(name: unknown): string {
+  return String(name ?? '').trim().toLowerCase();
+}
+
+function buildSubcategoryLookup(subcategories: { id: string; name: string; category_id: string }[]) {
+  const subByCatAndName = new Map<string, { id: string; category_id: string }>();
+  subcategories.forEach(s => {
+    subByCatAndName.set(`${s.category_id}|${normalizeImportName(s.name)}`, s);
+  });
+  return subByCatAndName;
+}
+
+function resolveQuestionTargets(
+  row: any,
+  scope: ExportScope,
+  selectedCategory: string,
+  selectedSubcategory: string,
+  categoriesByName: Map<string, string>,
+  subByCatAndName: Map<string, { id: string; category_id: string }>,
+): { category_id: string; subcategory_id: string } | { error: string } {
+  if (scope === 'subcategory') {
+    if (!selectedCategory || !selectedSubcategory) {
+      return { error: 'Kategorie/Subkategorie nicht gewählt' };
+    }
+    return { category_id: selectedCategory, subcategory_id: selectedSubcategory };
+  }
+  if (scope === 'category') {
+    const subName = normalizeImportName(row.subcategory_name);
+    if (!subName) return { error: 'subcategory_name fehlt' };
+    const sub = subByCatAndName.get(`${selectedCategory}|${subName}`);
+    if (!sub) return { error: `Subkategorie "${row.subcategory_name}" nicht gefunden` };
+    return { category_id: selectedCategory, subcategory_id: sub.id };
+  }
+  const catName = normalizeImportName(row.category_name);
+  const subName = normalizeImportName(row.subcategory_name);
+  if (!catName) return { error: 'category_name fehlt' };
+  if (!subName) return { error: 'subcategory_name fehlt' };
+  const categoryId = categoriesByName.get(catName);
+  if (!categoryId) return { error: `Kategorie "${row.category_name}" nicht gefunden` };
+  const sub = subByCatAndName.get(`${categoryId}|${subName}`);
+  if (!sub) return { error: `Subkategorie "${row.subcategory_name}" nicht gefunden` };
+  return { category_id: categoryId, subcategory_id: sub.id };
+}
+
+async function fetchIdsInChunks(table: 'books' | 'questions', ids: string[]): Promise<Set<string>> {
+  const valid = new Set<string>();
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  for (let i = 0; i < unique.length; i += RATING_FETCH_CHUNK) {
+    const chunk = unique.slice(i, i + RATING_FETCH_CHUNK);
+    const { data, error } = await supabase.from(table).select('id').in('id', chunk);
+    if (error) throw error;
+    data?.forEach(row => valid.add(row.id));
+  }
+  return valid;
+}
+
+async function loadImportLookup(scope: ExportScope, selectedCategory: string) {
+  const { data: allCategories, error: catError } = await supabase.from('categories').select('id, name');
+  if (catError) throw catError;
+  let subcategories: { id: string; name: string; category_id: string }[];
+  if (scope === 'all') {
+    subcategories = await fetchPaginated(async (from, to) =>
+      supabase.from('subcategories').select('id, name, category_id').range(from, to),
+    );
+  } else {
+    const { data, error } = await supabase
+      .from('subcategories')
+      .select('id, name, category_id')
+      .eq('category_id', selectedCategory);
+    if (error) throw error;
+    subcategories = data || [];
+  }
+  return { categories: allCategories || [], subcategories };
+}
+
 function ExcelExportImport() {
   const [categories, setCategories] = useState<any[]>([]);
   const [subcategories, setSubcategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string>('');
+  const [scope, setScope] = useState<ExportScope>('subcategory');
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -347,44 +514,128 @@ function ExcelExportImport() {
     }
   }, [selectedCategory]);
 
+  const canUseScope =
+    scope === 'all' ||
+    (scope === 'category' && !!selectedCategory) ||
+    (scope === 'subcategory' && !!selectedSubcategory);
+
   const handleExport = async () => {
-    if (!selectedSubcategory) {
-      setMessage({ type: 'error', text: 'Bitte Subkategorie auswählen' });
+    if (!canUseScope) {
+      setMessage({
+        type: 'error',
+        text: scope === 'subcategory'
+          ? 'Bitte Subkategorie auswählen'
+          : scope === 'category'
+            ? 'Bitte Kategorie auswählen'
+            : 'Export nicht möglich',
+      });
       return;
     }
     setExporting(true);
     setMessage(null);
     try {
-      const { data: questions, error } = await supabase
-        .from('questions')
-        .select('*, books(title)')
-        .eq('subcategory_id', selectedSubcategory);
-      if (error) throw error;
-      if (!questions || questions.length === 0) {
-        setMessage({ type: 'error', text: 'Keine Fragen in dieser Subkategorie gefunden' });
+      const questionSelect = '*, books(title), subcategories(name, categories(name))';
+      const questions = await fetchPaginated<any>(async (from, to) => {
+        let query = supabase.from('questions').select(questionSelect);
+        if (scope === 'subcategory') query = query.eq('subcategory_id', selectedSubcategory);
+        else if (scope === 'category') query = query.eq('category_id', selectedCategory);
+        return query.range(from, to);
+      });
+
+      if (questions.length === 0) {
+        setMessage({ type: 'error', text: 'Keine Fragen für diesen Export gefunden' });
         setExporting(false);
         return;
       }
-      const exportData = questions.map(q => ({
-        question_id: q.id,
-        book_id: q.book_id,
-        book_title: q.books?.title || '',
-        question_text: q.question_text,
-        type: q.type,
-        correct_answer: q.correct_answer,
-        option_a: q.option_a || '',
-        option_b: q.option_b || '',
-        option_c: q.option_c || '',
-        option_d: q.option_d || '',
-        difficulty: q.difficulty,
-      }));
-      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      const questionIds = questions.map(q => q.id);
+      const [ratings, answerStats] = await Promise.all([
+        fetchRatingsForQuestions(questionIds),
+        fetchAnswerStatsForQuestions(questionIds),
+      ]);
+      const ratingsByQuestion = new Map<string, any[]>();
+      ratings.forEach(r => {
+        const list = ratingsByQuestion.get(r.question_id) || [];
+        list.push(r);
+        ratingsByQuestion.set(r.question_id, list);
+      });
+
+      const exportData = questions.map(q => {
+        const qRatings = ratingsByQuestion.get(q.id) || [];
+        const avg = qRatings.length
+          ? (qRatings.reduce((sum, r) => sum + r.rating, 0) / qRatings.length).toFixed(2)
+          : '';
+        const meta = questionExportMeta(q);
+        const stats = answerStats.get(q.id);
+        const correct = stats?.correct_count ?? 0;
+        const wrong = stats?.wrong_count ?? 0;
+        return {
+          category_name: meta.category_name,
+          subcategory_name: meta.subcategory_name,
+          question_id: q.id,
+          book_id: q.book_id,
+          book_title: q.books?.title || '',
+          question_text: q.question_text,
+          type: q.type,
+          correct_answer: q.correct_answer,
+          option_a: q.option_a || '',
+          option_b: q.option_b || '',
+          option_c: q.option_c || '',
+          option_d: q.option_d || '',
+          difficulty: q.difficulty,
+          rating_count: qRatings.length,
+          rating_average: avg,
+          answer_correct_count: correct,
+          answer_wrong_count: wrong,
+          answer_success_pct: answerSuccessPct(correct, wrong),
+        };
+      });
+
+      const ratingsExport = ratings.map(r => {
+        const q = questions.find(qx => qx.id === r.question_id);
+        const meta = q ? questionExportMeta(q) : { category_name: '', subcategory_name: '' };
+        return {
+          question_id: r.question_id,
+          category_name: meta.category_name,
+          subcategory_name: meta.subcategory_name,
+          question_text: q?.question_text || '',
+          rater_username: r.rater?.username || '',
+          rating: r.rating,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+        };
+      });
+
+      const wsQuestions = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Fragen');
-      const subcatName = subcategories.find(s => s.id === selectedSubcategory)?.name || 'fragen';
-      const fileName = `${subcatName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.utils.book_append_sheet(wb, wsQuestions, 'Fragen');
+      if (ratingsExport.length > 0) {
+        const wsRatings = XLSX.utils.json_to_sheet(ratingsExport);
+        XLSX.utils.book_append_sheet(wb, wsRatings, 'Bewertungen');
+      }
+
+      const date = new Date().toISOString().split('T')[0];
+      let fileName: string;
+      if (scope === 'subcategory') {
+        const subcatName = subcategories.find(s => s.id === selectedSubcategory)?.name || 'subkategorie';
+        fileName = `${subcatName.replace(/\s+/g, '_')}_${date}.xlsx`;
+      } else if (scope === 'category') {
+        const catName = categories.find(c => c.id === selectedCategory)?.name || 'kategorie';
+        fileName = `${catName.replace(/\s+/g, '_')}_alle_${date}.xlsx`;
+      } else {
+        fileName = `alle_fragen_${date}.xlsx`;
+      }
+
       XLSX.writeFile(wb, fileName);
-      setMessage({ type: 'success', text: `✅ ${questions.length} Fragen exportiert: ${fileName}` });
+      const ratingsNote = ratings.length > 0
+        ? `, ${ratings.length} Bewertung${ratings.length === 1 ? '' : 'en'}`
+        : ratings.length === 0 && questionIds.length > 0
+          ? ' (keine Bewertungen)'
+          : '';
+      setMessage({
+        type: 'success',
+        text: `✅ ${questions.length} Fragen exportiert${ratingsNote}: ${fileName}`,
+      });
     } catch (err: any) {
       setMessage({ type: 'error', text: `❌ Fehler: ${err.message}` });
     } finally {
@@ -395,8 +646,15 @@ function ExcelExportImport() {
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!selectedSubcategory) {
-      setMessage({ type: 'error', text: 'Bitte zuerst Kategorie und Subkategorie auswählen!' });
+    if (!canUseScope) {
+      setMessage({
+        type: 'error',
+        text: scope === 'subcategory'
+          ? 'Bitte Subkategorie auswählen'
+          : scope === 'category'
+            ? 'Bitte Kategorie auswählen'
+            : 'Import nicht möglich',
+      });
       e.target.value = '';
       return;
     }
@@ -405,20 +663,23 @@ function ExcelExportImport() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(worksheet);
-      if (rows.length === 0) throw new Error('Excel-Datei ist leer');
+      const sheetName = workbook.SheetNames.includes('Fragen')
+        ? 'Fragen'
+        : workbook.SheetNames[0];
+      const rows: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+      if (rows.length === 0) throw new Error('Excel-Datei ist leer (Blatt „Fragen“)');
+
+      const { categories: lookupCategories, subcategories: lookupSubs } = await loadImportLookup(scope, selectedCategory);
+      const categoriesByName = new Map(lookupCategories.map(c => [normalizeImportName(c.name), c.id]));
+      const subByCatAndName = buildSubcategoryLookup(lookupSubs);
 
       const bookIds = Array.from(new Set(rows.map(r => r.book_id).filter(Boolean)));
-      const { data: existingBooks } = await supabase.from('books').select('id').in('id', bookIds);
-      const validBookIds = new Set(existingBooks?.map(b => b.id) || []);
+      const validBookIds = bookIds.length > 0 ? await fetchIdsInChunks('books', bookIds) : new Set<string>();
 
       const questionIdsInExcel = rows.map(r => r.question_id).filter(Boolean);
-      let validQuestionIds = new Set<string>();
-      if (questionIdsInExcel.length > 0) {
-        const { data: existingQuestions } = await supabase.from('questions').select('id').in('id', questionIdsInExcel);
-        validQuestionIds = new Set(existingQuestions?.map(q => q.id) || []);
-      }
+      const validQuestionIds = questionIdsInExcel.length > 0
+        ? await fetchIdsInChunks('questions', questionIdsInExcel)
+        : new Set<string>();
 
       const toInsert: any[] = [];
       const toUpdate: any[] = [];
@@ -437,9 +698,21 @@ function ExcelExportImport() {
           errors.push(`Zeile ${idx + 2}: correct_answer fehlt`);
           return;
         }
+        const targets = resolveQuestionTargets(
+          row,
+          scope,
+          selectedCategory,
+          selectedSubcategory,
+          categoriesByName,
+          subByCatAndName,
+        );
+        if ('error' in targets) {
+          errors.push(`Zeile ${idx + 2}: ${targets.error}`);
+          return;
+        }
         const questionData = {
-          category_id: selectedCategory,
-          subcategory_id: selectedSubcategory,
+          category_id: targets.category_id,
+          subcategory_id: targets.subcategory_id,
           book_id: row.book_id,
           question_text: row.question_text,
           type: row.type || 'multiple_choice',
@@ -448,7 +721,7 @@ function ExcelExportImport() {
           option_b: row.option_b || null,
           option_c: row.option_c || null,
           option_d: row.option_d || null,
-          difficulty: parseInt(row.difficulty) || 2,
+          difficulty: parseInt(row.difficulty, 10) || 2,
         };
         if (row.question_id && validQuestionIds.has(row.question_id)) {
           toUpdate.push({ id: row.question_id, ...questionData });
@@ -469,16 +742,19 @@ function ExcelExportImport() {
         else updateCount++;
       }
 
-      if (toInsert.length > 0) {
-        const { error } = await supabase.from('questions').insert(toInsert);
-        if (error) errors.push(`Insert fehlgeschlagen: ${error.message}`);
-        else insertCount = toInsert.length;
+      const INSERT_CHUNK = 100;
+      for (let i = 0; i < toInsert.length; i += INSERT_CHUNK) {
+        const chunk = toInsert.slice(i, i + INSERT_CHUNK);
+        const { error } = await supabase.from('questions').insert(chunk);
+        if (error) errors.push(`Insert fehlgeschlagen (Zeilen ${i + 1}–${i + chunk.length}): ${error.message}`);
+        else insertCount += chunk.length;
       }
 
       let msg = '';
       if (updateCount > 0) msg += `✅ ${updateCount} Fragen aktualisiert\n`;
       if (insertCount > 0) msg += `✅ ${insertCount} neue Fragen hinzugefügt\n`;
-      if (errors.length > 0) msg += `⚠️ ${errors.length} Fehler:\n${errors.slice(0, 5).join('\n')}`;
+      if (errors.length > 0) msg += `⚠️ ${errors.length} Fehler:\n${errors.slice(0, 8).join('\n')}`;
+      if (errors.length > 8) msg += `\n… und ${errors.length - 8} weitere`;
       if (!msg) msg = 'Keine Änderungen';
       setMessage({ type: errors.length > 0 && updateCount === 0 && insertCount === 0 ? 'error' : 'success', text: msg });
     } catch (err: any) {
@@ -493,27 +769,47 @@ function ExcelExportImport() {
     <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
       <h3 style={{ fontSize: '18px', color: colors.text, marginBottom: '16px' }}>📊 Excel Export / Import</h3>
       <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '20px' }}>
-        Exportiere Fragen einer Subkategorie als Excel, bearbeite sie und lade sie wieder hoch.
+        Export und Import: Subkategorie, ganze Kategorie oder alle Fragen. Bewertungen werden nur exportiert.
       </p>
       <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', marginBottom: '20px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Umfang (Export & Import)</label>
+        <select
+          value={scope}
+          onChange={(e) => setScope(e.target.value as ExportScope)}
+          style={{ ...inputStyle, marginBottom: '16px' }}
+        >
+          <option value="subcategory">Eine Subkategorie</option>
+          <option value="category">Ganze Kategorie</option>
+          <option value="all">Alle Fragen</option>
+        </select>
         <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Kategorie</label>
-        <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} style={{ ...inputStyle, marginBottom: '16px' }}>
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          disabled={scope === 'all'}
+          style={{ ...inputStyle, marginBottom: '16px', opacity: scope === 'all' ? 0.5 : 1 }}
+        >
           <option value="">— Kategorie wählen —</option>
           {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
         </select>
         <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: colors.text, marginBottom: '8px' }}>Subkategorie</label>
-        <select value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory} style={{ ...inputStyle, marginBottom: '0', opacity: selectedCategory ? 1 : 0.5 }}>
+        <select
+          value={selectedSubcategory}
+          onChange={(e) => setSelectedSubcategory(e.target.value)}
+          disabled={scope !== 'subcategory' || !selectedCategory}
+          style={{ ...inputStyle, marginBottom: '0', opacity: scope === 'subcategory' && selectedCategory ? 1 : 0.5 }}
+        >
           <option value="">— Subkategorie wählen —</option>
           {subcategories.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
         </select>
       </div>
       <div style={{ display: 'flex', gap: '12px', flexDirection: 'column', marginBottom: '20px' }}>
-        <button style={{ ...btnPrimary, opacity: !selectedSubcategory || exporting ? 0.5 : 1 }} onClick={handleExport} disabled={!selectedSubcategory || exporting}>
+        <button style={{ ...btnPrimary, opacity: !canUseScope || exporting ? 0.5 : 1 }} onClick={handleExport} disabled={!canUseScope || exporting}>
           {exporting ? 'Exportiere...' : '📥 Excel exportieren'}
         </button>
-        <label style={{ ...btnSecondary, display: 'block', textAlign: 'center', opacity: !selectedSubcategory || importing ? 0.5 : 1, cursor: !selectedSubcategory || importing ? 'not-allowed' : 'pointer' }}>
+        <label style={{ ...btnSecondary, display: 'block', textAlign: 'center', opacity: !canUseScope || importing ? 0.5 : 1, cursor: !canUseScope || importing ? 'not-allowed' : 'pointer' }}>
           {importing ? 'Importiere...' : '📤 Excel importieren'}
-          <input type="file" accept=".xlsx,.xls" onChange={handleImport} disabled={!selectedSubcategory || importing} style={{ display: 'none' }} />
+          <input type="file" accept=".xlsx,.xls" onChange={handleImport} disabled={!canUseScope || importing} style={{ display: 'none' }} />
         </label>
       </div>
       {message && (
@@ -523,13 +819,18 @@ function ExcelExportImport() {
       )}
       <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#FFF9E6', borderRadius: '8px', fontSize: '12px', color: colors.muted, lineHeight: '1.6' }}>
         <strong>💡 Hinweise:</strong><br />
-        • <strong>question_id leer</strong> = Neue Frage wird hinzugefügt<br />
-        • <strong>question_id vorhanden</strong> = Bestehende Frage wird überschrieben<br />
+        • Export enthält Blatt <strong>Fragen</strong> (Bewertungen + Antwort-Statistik: answer_correct_count, answer_wrong_count, answer_success_pct) und ggf. <strong>Bewertungen</strong><br />
+        • Import liest das Blatt <strong>Fragen</strong> (wie beim Export)<br />
+        • <strong>Subkategorie-Import:</strong> Kategorie + Subkategorie oben wählen<br />
+        • <strong>Kategorie-Import:</strong> Kategorie wählen, pro Zeile <strong>subcategory_name</strong> nötig<br />
+        • <strong>Alle Fragen:</strong> pro Zeile <strong>category_name</strong> und <strong>subcategory_name</strong> nötig<br />
+        • <strong>question_id leer</strong> = neue Frage · <strong>question_id vorhanden</strong> = Update<br />
         • <strong>book_id</strong> muss eine UUID eines existierenden Buchs sein
       </div>
     </div>
   );
 }
+
 
 function AdminImport({ onBack }: { onBack: () => void }) {
   const [, setCsvText] = useState('');
@@ -755,6 +1056,14 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
         </div>
 
         <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
+          <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>Antwort-Statistik</h3>
+          <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>
+            Wie oft Fragen richtig oder falsch beantwortet werden (Zeitüberschreitung zählt als falsch)
+          </p>
+          <QuestionAnswerStatsInbox />
+        </div>
+
+        <div style={{ marginTop: '48px', paddingTop: '24px', borderTop: `1px solid ${colors.light}` }}>
           <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '8px' }}>3er-Gruppen verwalten</h3>
           <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>
             Erstellt automatisch 3er-Gruppen aus allen ungruppierten Fragen. Jede Gruppe bekommt eine aufsteigende Nummer pro Subkategorie.
@@ -769,6 +1078,265 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+
+type AnswerStatsSort = 'attempts' | 'success_asc' | 'wrong_desc';
+
+function QuestionAnswerStatsInbox() {
+  const [categories, setCategories] = useState<any[]>([]);
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedSubcategory, setSelectedSubcategory] = useState('');
+  const [sortBy, setSortBy] = useState<AnswerStatsSort>('attempts');
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [rebuildMessage, setRebuildMessage] = useState('');
+
+  useEffect(() => {
+    supabase.from('categories').select('id, name').order('name').then(({ data }) => setCategories(data || []));
+  }, []);
+
+  useEffect(() => {
+    if (selectedCategory) {
+      supabase.from('subcategories').select('id, name').eq('category_id', selectedCategory).order('name')
+        .then(({ data }) => { setSubcategories(data || []); setSelectedSubcategory(''); });
+    } else {
+      setSubcategories([]);
+      setSelectedSubcategory('');
+    }
+  }, [selectedCategory]);
+
+  const loadStats = async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const allRows = await fetchPaginated<any>(async (from, to) => {
+        let query = supabase
+          .from('questions')
+          .select(`
+            id,
+            question_text,
+            subcategories ( name, categories ( name ) ),
+            question_answer_stats ( correct_count, wrong_count )
+          `);
+        if (selectedSubcategory) query = query.eq('subcategory_id', selectedSubcategory);
+        else if (selectedCategory) query = query.eq('category_id', selectedCategory);
+        return query.range(from, to);
+      });
+
+      const mapped = allRows.map(q => {
+        const stats = Array.isArray(q.question_answer_stats)
+          ? q.question_answer_stats[0]
+          : q.question_answer_stats;
+        const correct = stats?.correct_count ?? 0;
+        const wrong = stats?.wrong_count ?? 0;
+        const total = correct + wrong;
+        const meta = questionExportMeta(q);
+        return {
+          id: q.id,
+          question_text: q.question_text,
+          category_name: meta.category_name,
+          subcategory_name: meta.subcategory_name,
+          correct,
+          wrong,
+          total,
+          successPct: total > 0 ? Math.round((correct / total) * 100) : null,
+        };
+      });
+
+      const sorted = [...mapped].sort((a, b) => {
+        if (sortBy === 'success_asc') {
+          const ap = a.successPct ?? 101;
+          const bp = b.successPct ?? 101;
+          if (ap !== bp) return ap - bp;
+          return b.total - a.total;
+        }
+        if (sortBy === 'wrong_desc') {
+          if (b.wrong !== a.wrong) return b.wrong - a.wrong;
+          return b.total - a.total;
+        }
+        return b.total - a.total;
+      });
+
+      setRows(sorted);
+    } catch (err: any) {
+      const missing = err.message?.includes('question_answer_stats');
+      setLoadError(
+        missing
+          ? 'Tabelle question_answer_stats fehlt. Bitte supabase/question_answer_stats.sql im Supabase SQL Editor ausführen.'
+          : `Fehler beim Laden: ${err.message}`,
+      );
+      setRows([]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, selectedSubcategory, sortBy]);
+
+  const rebuildFromDuels = async () => {
+    if (!window.confirm(
+      'Alle Antwort-Zähler werden aus abgeschlossenen Spieler-Duellen neu berechnet (überschreibt bestehende Werte). Bot-Partien zählen nur mit, wenn sie nach dem Update gespielt wurden. Fortfahren?',
+    )) return;
+    setRebuilding(true);
+    setRebuildMessage('');
+    try {
+      const stats = new Map<string, { correct: number; wrong: number }>();
+      const groupCache = new Map<string, string[]>();
+
+      const duels = await fetchPaginated<any>(async (from, to) =>
+        supabase
+          .from('duels')
+          .select('rounds_data, opponent_is_bot')
+          .eq('status', 'completed')
+          .range(from, to),
+      );
+
+      const addAnswers = (questionIds: string[], answers: boolean[] | undefined) => {
+        if (!answers?.length) return;
+        answers.forEach((isCorrect, i) => {
+          const qid = questionIds[i];
+          if (!qid) return;
+          const entry = stats.get(qid) || { correct: 0, wrong: 0 };
+          if (isCorrect) entry.correct += 1;
+          else entry.wrong += 1;
+          stats.set(qid, entry);
+        });
+      };
+
+      for (const duel of duels) {
+        for (const round of duel.rounds_data || []) {
+          if (!round?.group_id) continue;
+          let questionIds = groupCache.get(round.group_id);
+          if (!questionIds) {
+            const { data: members, error } = await supabase
+              .from('question_group_members')
+              .select('question_id, position')
+              .eq('group_id', round.group_id)
+              .order('position', { ascending: true });
+            if (error) throw error;
+            questionIds = members?.map(m => m.question_id) || [];
+            groupCache.set(round.group_id, questionIds);
+          }
+          addAnswers(questionIds, round.challenger_answers);
+          if (!duel.opponent_is_bot) addAnswers(questionIds, round.opponent_answers);
+        }
+      }
+
+      const { error: deleteError } = await supabase
+        .from('question_answer_stats')
+        .delete()
+        .neq('question_id', '00000000-0000-0000-0000-000000000000');
+      if (deleteError) throw deleteError;
+
+      const payload = Array.from(stats.entries()).map(([question_id, s]) => ({
+        question_id,
+        correct_count: s.correct,
+        wrong_count: s.wrong,
+        updated_at: new Date().toISOString(),
+      }));
+
+      const UPSERT_CHUNK = 200;
+      for (let i = 0; i < payload.length; i += UPSERT_CHUNK) {
+        const chunk = payload.slice(i, i + UPSERT_CHUNK);
+        const { error } = await supabase.from('question_answer_stats').upsert(chunk);
+        if (error) throw error;
+      }
+
+      setRebuildMessage(`✅ ${payload.length} Fragen aus ${duels.length} Duellen neu berechnet`);
+      await loadStats();
+    } catch (err: any) {
+      setRebuildMessage(`❌ ${err.message}`);
+    }
+    setRebuilding(false);
+  };
+
+  const withData = rows.filter(r => r.total > 0);
+  const totals = withData.reduce((acc, r) => ({ correct: acc.correct + r.correct, wrong: acc.wrong + r.wrong }), { correct: 0, wrong: 0 });
+  const overallTotal = totals.correct + totals.wrong;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+        <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: '1 1 160px' }}>
+          <option value="">Alle Kategorien</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={selectedSubcategory} onChange={e => setSelectedSubcategory(e.target.value)} disabled={!selectedCategory} style={{ ...inputStyle, marginBottom: 0, flex: '1 1 160px', opacity: selectedCategory ? 1 : 0.5 }}>
+          <option value="">Alle Subkategorien</option>
+          {subcategories.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as AnswerStatsSort)} style={{ ...inputStyle, marginBottom: 0, flex: '1 1 200px' }}>
+          <option value="attempts">Meiste Antworten</option>
+          <option value="success_asc">Niedrigste Erfolgsquote</option>
+          <option value="wrong_desc">Meiste Fehlantworten</option>
+        </select>
+      </div>
+      <button type="button" style={{ ...btnSecondary, width: 'auto', padding: '12px 20px', marginBottom: '16px' }} onClick={rebuildFromDuels} disabled={rebuilding || loading}>
+        {rebuilding ? 'Berechne neu…' : 'Aus Duellen neu berechnen'}
+      </button>
+      {rebuildMessage ? (
+        <p style={{ fontSize: '13px', color: colors.text, marginBottom: '12px', whiteSpace: 'pre-line' }}>{rebuildMessage}</p>
+      ) : null}
+      {loadError ? (
+        <div style={{ backgroundColor: '#F7F2EB', border: '1px solid #A68A64', borderRadius: '8px', padding: '14px', marginBottom: '16px', fontSize: '13px', color: colors.text }}>
+          {loadError}
+        </div>
+      ) : null}
+      {!loadError && (
+        <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '16px' }}>
+          {withData.length} Fragen mit Daten
+          {overallTotal > 0 ? ` · ${totals.correct} richtig / ${totals.wrong} falsch (${answerSuccessPct(totals.correct, totals.wrong)}% Erfolg)` : ''}
+        </p>
+      )}
+      {loading ? (
+        <p style={{ color: colors.muted, fontSize: '13px' }}>Lade Statistik…</p>
+      ) : rows.length === 0 && !loadError ? (
+        <p style={{ color: colors.muted, fontSize: '13px' }}>Noch keine Antwort-Daten. Spiele Duelle oder berechne aus bestehenden Duellen neu.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '520px', overflowY: 'auto' }}>
+          {rows.map(row => (
+            <div key={row.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '8px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '4px' }}>
+                    {row.category_name}{row.subcategory_name ? ` · ${row.subcategory_name}` : ''}
+                  </div>
+                  <div style={{ fontSize: '14px', color: colors.text, lineHeight: 1.45 }}>{row.question_text}</div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  {row.total > 0 ? (
+                    <>
+                      <div style={{ fontSize: '18px', fontWeight: 700, color: row.successPct !== null && row.successPct < 50 ? '#A68A64' : '#2D6A4F' }}>
+                        {row.successPct}%
+                      </div>
+                      <div style={{ fontSize: '12px', color: colors.muted }}>
+                        <span style={{ color: '#2D6A4F' }}>{row.correct}✓</span>
+                        {' · '}
+                        <span style={{ color: '#A68A64' }}>{row.wrong}✗</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: colors.muted }}>—</div>
+                  )}
+                </div>
+              </div>
+              {row.total > 0 ? (
+                <div style={{ height: '5px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${row.successPct}%`, backgroundColor: '#2D6A4F', borderRadius: '3px' }} />
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1583,40 +2151,72 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
   );
 }
 
-const BOT_PICK_DURATION_MS = 4500;
+const BOT_CHOSEN_DISPLAY_MS = 2000;
+const BOT_PLAYING_DURATION_MS = 4000;
 
-function BotTurnProgressScreen({ emoji, name, subcategoryName, onComplete }: { emoji: string; name: string; subcategoryName: string; onComplete: () => void }) {
+function BotCategoryPickFlow({
+  emoji,
+  name,
+  subcategoryName,
+  onComplete,
+}: {
+  emoji: string;
+  name: string;
+  subcategoryName: string;
+  onComplete: () => void;
+}) {
+  const [uiPhase, setUiPhase] = useState<'chosen' | 'playing'>('chosen');
   const [progressPct, setProgressPct] = useState(0);
   const completedRef = React.useRef(false);
   const onCompleteRef = React.useRef(onComplete);
   onCompleteRef.current = onComplete;
 
   useEffect(() => {
+    const id = window.setTimeout(() => setUiPhase('playing'), BOT_CHOSEN_DISPLAY_MS);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
+    if (uiPhase !== 'playing') return;
     completedRef.current = false;
     const startTime = performance.now();
     let raf = 0;
 
     const tick = (now: number) => {
-      const t = Math.min(1, (now - startTime) / BOT_PICK_DURATION_MS);
+      const t = Math.min(1, (now - startTime) / BOT_PLAYING_DURATION_MS);
       setProgressPct(t * 100);
       if (t < 1) {
         raf = requestAnimationFrame(tick);
       } else if (!completedRef.current) {
         completedRef.current = true;
+        setProgressPct(100);
         onCompleteRef.current();
       }
     };
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [uiPhase]);
+
+  if (uiPhase === 'chosen') {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: fontBody }}>
+        <div style={{ textAlign: 'center', maxWidth: '420px', width: '100%' }}>
+          <div style={{ fontSize: 'clamp(52px, 16vw, 80px)', marginBottom: '20px', lineHeight: 1 }}>{emoji}</div>
+          <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', fontFamily: fontBody, lineHeight: 1.5 }}>
+            <strong>{name}</strong> hat <strong style={{ color: colors.primary }}>{subcategoryName}</strong> gewählt
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: fontBody }}>
       <div style={{ textAlign: 'center', maxWidth: '420px', width: '100%' }}>
         <div style={{ fontSize: 'clamp(52px, 16vw, 80px)', marginBottom: '20px', lineHeight: 1 }}>{emoji}</div>
-        <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '28px', fontFamily: fontBody, lineHeight: 1.5 }}>
-          <strong>{name}</strong> hat <strong style={{ color: colors.primary }}>{subcategoryName}</strong> gewählt
+        <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '28px', fontFamily: fontBody }}>
+          <strong>{name}</strong> spielt
         </p>
         <div style={{ height: '6px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden' }}>
           <div
@@ -1634,8 +2234,8 @@ function BotTurnProgressScreen({ emoji, name, subcategoryName, onComplete }: { e
   );
 }
 
-function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }: {
-  questions: any[], roundNumber: number, totalRounds: number, bot: any | null,
+function QuizRound({ questions, roundNumber, totalRounds, bot, userId, onRoundComplete }: {
+  questions: any[], roundNumber: number, totalRounds: number, bot: any | null, userId?: string,
   onRoundComplete: (userAnswers: boolean[], botAnswers: boolean[] | null, selectedAnswers: string[]) => void
 }) {
   const [current, setCurrent] = useState(0);
@@ -1726,6 +2326,9 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
       const optionKeys = q.type === 'true_false' ? ['Wahr', 'Falsch'] : ['A', 'B', 'C', 'D'];
       const isTimeout = answer === '__timeout__';
       const userIsCorrect = !isTimeout && answer === q.correct_answer;
+      if (userId && q?.id) {
+        recordQuestionAnswer(q.id, userIsCorrect);
+      }
 
       let bAnswer: string | null = null;
       let botIsCorrect = false;
@@ -2592,7 +3195,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
       }
       if (botCategoryPicking && botPickedSub) {
         return (
-          <BotTurnProgressScreen
+          <BotCategoryPickFlow
             emoji={opponentEmoji}
             name={opponentName}
             subcategoryName={botPickedSub.name}
@@ -2664,7 +3267,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
           {userChoosesThisRound ? 'DEINE WAHL' : `${shortBotDisplayName(opponentName).toUpperCase()} HAT GEWÄHLT`}
         </span>
       </div>
-      <QuizRound questions={questions} roundNumber={currentRound} totalRounds={TOTAL_ROUNDS} bot={bot} onRoundComplete={handleRoundComplete} />
+      <QuizRound questions={questions} roundNumber={currentRound} totalRounds={TOTAL_ROUNDS} bot={bot} userId={userId} onRoundComplete={handleRoundComplete} />
     </div>
   );
 }
@@ -2996,7 +3599,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
             {currentRoundInfo.subcategory_name.toUpperCase()} · GRUPPE {currentRoundInfo.group_number}
           </span>
         </div>
-        <QuizRound questions={currentQuestions} roundNumber={roundNum} totalRounds={TOTAL_ROUNDS} bot={null} onRoundComplete={handleRoundComplete} />
+        <QuizRound questions={currentQuestions} roundNumber={roundNum} totalRounds={TOTAL_ROUNDS} bot={null} userId={userId} onRoundComplete={handleRoundComplete} />
       </div>
     );
   }
