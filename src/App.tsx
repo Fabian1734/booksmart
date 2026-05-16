@@ -313,7 +313,7 @@ function AddBook() {
       </button>
 
       {message && (
-        <div style={{ backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#E53935'}`, borderRadius: '8px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
+        <div style={{ backgroundColor: message.type === 'success' ? '#EAF4EF' : '#F7F2EB', border: `1px solid ${message.type === 'success' ? '#2D6A4F' : '#A68A64'}`, borderRadius: '8px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
           {message.text}
         </div>
       )}
@@ -517,7 +517,7 @@ function ExcelExportImport() {
         </label>
       </div>
       {message && (
-        <div style={{ backgroundColor: message.type === 'success' ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.type === 'success' ? '#4CAF50' : '#E53935'}`, borderRadius: '8px', padding: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
+        <div style={{ backgroundColor: message.type === 'success' ? '#EAF4EF' : '#F7F2EB', border: `1px solid ${message.type === 'success' ? '#2D6A4F' : '#A68A64'}`, borderRadius: '8px', padding: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
           {message.text}
         </div>
       )}
@@ -729,7 +729,7 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
         )}
 
         {result && (
-          <div style={{ backgroundColor: result.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${result.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '8px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
+          <div style={{ backgroundColor: result.startsWith('✅') ? '#EAF4EF' : '#F7F2EB', border: `1px solid ${result.startsWith('✅') ? '#2D6A4F' : '#A68A64'}`, borderRadius: '8px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text }}>
             {result}
           </div>
         )}
@@ -756,7 +756,7 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
             {grouping ? 'Erstelle Gruppen...' : 'Gruppen erstellen'}
           </button>
           {groupResult && (
-            <div style={{ backgroundColor: groupResult.startsWith('✅') ? '#E8F5E9' : groupResult.startsWith('ℹ️') ? '#FFF9E6' : '#FDECEA', border: `1px solid ${groupResult.startsWith('✅') ? '#4CAF50' : groupResult.startsWith('ℹ️') ? '#FFC107' : '#E53935'}`, borderRadius: '8px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
+            <div style={{ backgroundColor: groupResult.startsWith('✅') ? '#EAF4EF' : groupResult.startsWith('ℹ️') ? '#FFF9E6' : '#F7F2EB', border: `1px solid ${groupResult.startsWith('✅') ? '#2D6A4F' : groupResult.startsWith('ℹ️') ? '#FFC107' : '#A68A64'}`, borderRadius: '8px', padding: '16px', marginTop: '16px', fontSize: '14px', color: colors.text, whiteSpace: 'pre-line' }}>
               {groupResult}
             </div>
           )}
@@ -826,13 +826,13 @@ function ReportedQuestions() {
                 💬 {report.reason}
               </div>
               <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '12px' }}>
-                Status: <span style={{ fontWeight: 'bold', color: report.status === 'open' ? '#E53935' : report.status === 'resolved' ? '#4CAF50' : colors.muted }}>{report.status}</span>
+                Status: <span style={{ fontWeight: 'bold', color: report.status === 'open' ? '#A68A64' : report.status === 'resolved' ? '#2D6A4F' : colors.muted }}>{report.status}</span>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {report.status === 'open' && (
                   <>
                     <button onClick={() => updateStatus(report.id, 'in_progress')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>In Bearbeitung</button>
-                    <button onClick={() => updateStatus(report.id, 'resolved')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Erledigt</button>
+                    <button onClick={() => updateStatus(report.id, 'resolved')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#2D6A4F', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Erledigt</button>
                     <button onClick={() => updateStatus(report.id, 'dismissed')} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.muted, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Ablehnen</button>
                   </>
                 )}
@@ -1034,7 +1034,7 @@ function UserSearch({ userId, onBack, onChallenge }: { userId: string, onBack: (
         </div>
 
         {message && (
-          <div style={{ backgroundColor: message.startsWith('✅') ? '#E8F5E9' : '#FDECEA', border: `1px solid ${message.startsWith('✅') ? '#4CAF50' : '#E53935'}`, borderRadius: '8px', padding: '16px', marginBottom: '24px', fontSize: '14px' }}>{message}</div>
+          <div style={{ backgroundColor: message.startsWith('✅') ? '#EAF4EF' : '#F7F2EB', border: `1px solid ${message.startsWith('✅') ? '#2D6A4F' : '#A68A64'}`, borderRadius: '8px', padding: '16px', marginBottom: '24px', fontSize: '14px' }}>{message}</div>
         )}
 
         {searchResult && (
@@ -1192,18 +1192,18 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
                         
                         let bg = 'white';
                         let border = '0.5px solid rgba(0,0,0,0.08)';
-                        if (isCorrect) { bg = '#E8F5E9'; border = '1px solid #4CAF50'; }
+                        if (isCorrect) { bg = '#EAF4EF'; border = '1px solid #2D6A4F'; }
 
                         return (
                           <div key={opt.key} style={{ backgroundColor: bg, border, padding: '10px 12px', borderRadius: '8px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>
                               <span style={{ fontWeight: 'bold', marginRight: '8px' }}>{opt.key}.</span>
                               {opt.label}
-                              {isCorrect && <span style={{ marginLeft: '8px', color: '#4CAF50', fontSize: '16px' }}>✓</span>}
+                              {isCorrect && <span style={{ marginLeft: '8px', color: '#2D6A4F', fontSize: '16px' }}>✓</span>}
                             </span>
                             <div style={{ display: 'flex', gap: '6px' }}>
-                              {isMyAnswer && <span style={{ fontSize: '11px', backgroundColor: myCorrect ? '#E8F5E9' : '#FDECEA', padding: '2px 6px', borderRadius: '3px' }}>Du</span>}
-                              {isOppAnswer && <span style={{ fontSize: '11px', backgroundColor: oppCorrect ? '#E8F5E9' : '#FDECEA', padding: '2px 6px', borderRadius: '3px' }}>{oppName}</span>}
+                              {isMyAnswer && <span style={{ fontSize: '11px', backgroundColor: myCorrect ? '#EAF4EF' : '#F7F2EB', padding: '2px 6px', borderRadius: '3px' }}>Du</span>}
+                              {isOppAnswer && <span style={{ fontSize: '11px', backgroundColor: oppCorrect ? '#EAF4EF' : '#F7F2EB', padding: '2px 6px', borderRadius: '3px' }}>{oppName}</span>}
                             </div>
                           </div>
                         );
@@ -1235,7 +1235,7 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
               placeholder="Was ist das Problem mit dieser Frage?"
               style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }}
             />
-            {reportSuccess && <div style={{ fontSize: '14px', marginBottom: '12px', color: reportSuccess.startsWith('✅') ? '#4CAF50' : '#E53935' }}>{reportSuccess}</div>}
+            {reportSuccess && <div style={{ fontSize: '14px', marginBottom: '12px', color: reportSuccess.startsWith('✅') ? '#2D6A4F' : '#A68A64' }}>{reportSuccess}</div>}
             <div style={{ display: 'flex', gap: '8px' }}>
               <button style={{ ...btnPrimary, marginBottom: 0 }} onClick={submitReport}>Melden</button>
               <button style={{ ...btnSecondary, marginBottom: 0 }} onClick={() => { setReportingQuestion(null); setReportReason(''); setReportSuccess(''); }}>Abbrechen</button>
@@ -1385,7 +1385,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
 
   const medal = (i: number) => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
 
-  const pctColor = (pct: number) => pct >= 70 ? '#4CAF50' : pct >= 50 ? '#FF9800' : '#E53935';
+  const pctColor = (pct: number) => pct >= 70 ? '#2D6A4F' : pct >= 50 ? '#FF9800' : '#A68A64';
 
   if (selectedDuel) return <DuelDetail duel={selectedDuel} userId={userId} onBack={() => setSelectedDuel(null)} />;
 
@@ -1502,7 +1502,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
                           </div>
                           <div style={{ textAlign: 'right' }}>
                             <div style={{ fontSize: '15px', color: colors.text, marginBottom: '2px' }}>{myScore} : {oppScore}</div>
-                            <div style={{ fontSize: '12px', color: won ? '#4CAF50' : draw ? colors.muted : '#E53935' }}>{won ? 'Gewonnen' : draw ? 'Unentschieden' : 'Verloren'}</div>
+                            <div style={{ fontSize: '12px', color: won ? '#2D6A4F' : draw ? colors.muted : '#A68A64' }}>{won ? 'Gewonnen' : draw ? 'Unentschieden' : 'Verloren'}</div>
                           </div>
                         </div>
                       );
@@ -1518,13 +1518,75 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
   );
 }
 
-function BotTurnCountdownScreen({ emoji, name, value }: { emoji: string, name: string, value: number }) {
+const BOT_PICK_STEPS = 5;
+const BOT_PICK_DURATION_MS = 4500;
+
+function BotTurnProgressScreen({ emoji, name, onComplete }: { emoji: string; name: string; onComplete: () => void }) {
+  const [step, setStep] = useState(1);
+  const [progressPct, setProgressPct] = useState(0);
+  const completedRef = React.useRef(false);
+  const onCompleteRef = React.useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  useEffect(() => {
+    completedRef.current = false;
+    const startTime = performance.now();
+    let raf = 0;
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startTime) / BOT_PICK_DURATION_MS);
+      setProgressPct(t * 100);
+      setStep(Math.min(BOT_PICK_STEPS, Math.max(1, Math.ceil(t * BOT_PICK_STEPS))));
+      if (t < 1) {
+        raf = requestAnimationFrame(tick);
+      } else if (!completedRef.current) {
+        completedRef.current = true;
+        onCompleteRef.current();
+      }
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: fontBody }}>
-      <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
+      <div style={{ textAlign: 'center', maxWidth: '420px', width: '100%' }}>
         <div style={{ fontSize: 'clamp(52px, 16vw, 80px)', marginBottom: '20px', lineHeight: 1 }}>{emoji}</div>
-        <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '28px', fontFamily: fontBody }}>{name} spielt</p>
-        <div style={{ fontSize: 'clamp(64px, 18vw, 120px)', fontWeight: '800', color: colors.primary, fontFamily: fontDisplay, lineHeight: 1 }}>{value}</div>
+        <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '8px', fontFamily: fontBody }}>{name} spielt</p>
+        <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '28px' }}>STUFE {step} VON {BOT_PICK_STEPS}</p>
+
+        <div style={{ height: '6px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden', marginBottom: '20px' }}>
+          <div
+            style={{
+              height: '100%',
+              width: `${progressPct}%`,
+              backgroundColor: colors.primary,
+              borderRadius: '3px',
+              transition: 'width 0.08s linear',
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '6px' }}>
+          {Array.from({ length: BOT_PICK_STEPS }, (_, i) => {
+            const n = i + 1;
+            const active = n <= step;
+            return (
+              <div
+                key={n}
+                style={{
+                  flex: 1,
+                  height: '4px',
+                  borderRadius: '2px',
+                  backgroundColor: active ? colors.primary : colors.light,
+                  opacity: active ? 1 : 0.45,
+                  transition: 'background-color 0.2s, opacity 0.2s',
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1685,7 +1747,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
   const timerPct = (timeLeft / QUESTION_TIME_SECONDS) * 100;
   const timerGreenAbove = Math.round(QUESTION_TIME_SECONDS * (8 / 15));
   const timerOrangeAbove = Math.round(QUESTION_TIME_SECONDS * (4 / 15));
-  const timerColor = timeLeft > timerGreenAbove ? '#4CAF50' : timeLeft > timerOrangeAbove ? '#FF9800' : '#E53935';
+  const timerColor = timeLeft > timerGreenAbove ? '#2D6A4F' : timeLeft > timerOrangeAbove ? '#FF9800' : '#A68A64';
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
@@ -1732,8 +1794,8 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, onRoundComplete }
             let bg = '#FFFFFF', border = `1px solid rgba(0,0,0,0.08)`, color = colors.text;
             if (isUserSelected && !showResult) { bg = 'rgba(0,0,0,0.08)'; border = `2px solid ${colors.primary}`; }
             if (showResult) {
-              if (isCorrect) { bg = '#E8F5E9'; border = '2px solid #4CAF50'; color = '#2E7D32'; }
-              else if (isUserSelected) { bg = '#FDECEA'; border = '2px solid #E53935'; color = '#B71C1C'; }
+              if (isCorrect) { bg = '#EAF4EF'; border = '2px solid #2D6A4F'; color = '#1B4332'; }
+              else if (isUserSelected) { bg = '#F7F2EB'; border = '2px solid #A68A64'; color = '#6B5635'; }
             }
             return (
               <button
@@ -1833,12 +1895,12 @@ function QuestionReviewBlock({
               const theirs = showOpponent && !!opponentSelection && opt.key === opponentSelection;
               let bg = '#FAFAF8';
               let bd = '1px solid rgba(0,0,0,0.08)';
-              if (isCorrect) { bg = '#E8F5E9'; bd = '1px solid #4CAF50'; }
-              else if (mine && !myCorrect) { bg = '#FDECEA'; bd = '1px solid #E53935'; }
+              if (isCorrect) { bg = '#EAF4EF'; bd = '1px solid #2D6A4F'; }
+              else if (mine && !myCorrect) { bg = '#F7F2EB'; bd = '1px solid #A68A64'; }
               return (
                 <div key={opt.key} style={{ backgroundColor: bg, border: bd, borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: colors.text }}>
                   <strong style={{ opacity: 0.6 }}>{opt.key}.</strong> {opt.label}
-                  {isCorrect && <span style={{ color: '#4CAF50', marginLeft: '8px', fontSize: '12px' }}>richtig</span>}
+                  {isCorrect && <span style={{ color: '#2D6A4F', marginLeft: '8px', fontSize: '12px' }}>richtig</span>}
                   {mine && <span style={{ marginLeft: '8px', fontSize: '11px', color: colors.muted }}>({myName})</span>}
                   {theirs && <span style={{ marginLeft: '8px', fontSize: '11px', color: colors.muted }}>({oppName})</span>}
                 </div>
@@ -1876,9 +1938,9 @@ function BotDuelRoundsOverview({ rounds, opponentShort }: { rounds: BotRoundRevi
               <div key={qi} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: colors.muted }}>
                 <span>Frage {qi + 1}</span>
                 <span>
-                  <span style={{ color: uOk ? '#4CAF50' : '#E53935', fontWeight: 'bold' }}>Du {uOk ? '✓' : '✗'}</span>
+                  <span style={{ color: uOk ? '#2D6A4F' : '#A68A64', fontWeight: 'bold' }}>Du {uOk ? '✓' : '✗'}</span>
                   <span style={{ margin: '0 6px', opacity: 0.4 }}>|</span>
-                  <span style={{ color: r.botAnswers[qi] ? '#4CAF50' : '#E53935', fontWeight: 'bold' }}>{opponentShort} {r.botAnswers[qi] ? '✓' : '✗'}</span>
+                  <span style={{ color: r.botAnswers[qi] ? '#2D6A4F' : '#A68A64', fontWeight: 'bold' }}>{opponentShort} {r.botAnswers[qi] ? '✓' : '✗'}</span>
                 </span>
               </div>
             ))}
@@ -1935,9 +1997,9 @@ function UserDuelRoundsOverview({
                 <div key={qi} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: colors.muted }}>
                   <span>Frage {qi + 1}</span>
                   <span>
-                    <span style={{ color: uOk ? '#4CAF50' : '#E53935', fontWeight: 'bold' }}>{myName} {uOk ? '✓' : '✗'}</span>
+                    <span style={{ color: uOk ? '#2D6A4F' : '#A68A64', fontWeight: 'bold' }}>{myName} {uOk ? '✓' : '✗'}</span>
                     <span style={{ margin: '0 6px', opacity: 0.4 }}>|</span>
-                    <span style={{ color: oppAns?.[qi] ? '#4CAF50' : '#E53935', fontWeight: 'bold' }}>{oppName} {oppAns?.[qi] ? '✓' : '✗'}</span>
+                    <span style={{ color: oppAns?.[qi] ? '#2D6A4F' : '#A68A64', fontWeight: 'bold' }}>{oppName} {oppAns?.[qi] ? '✓' : '✗'}</span>
                   </span>
                 </div>
               ))}
@@ -2029,7 +2091,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   const [pickOptionsLoading, setPickOptionsLoading] = useState(false);
   const [announcementSub, setAnnouncementSub] = useState<any>(null);
   const [playedGroupsCache, setPlayedGroupsCache] = useState<string[]>([]);
-  const [botCategoryCountdown, setBotCategoryCountdown] = useState<number | null>(null);
+  const [botCategoryPicking, setBotCategoryPicking] = useState(false);
   const botCategoryPickStarted = React.useRef(false);
 
   const opponentName = bots.find(b => b.level === duel.bot_level)?.name || 'Bot';
@@ -2054,28 +2116,12 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
 
   useEffect(() => {
     if (phase !== 'selectSub' || userChoosesThisRound || eligibleBotSubs.length === 0 || pickOptionsLoading) {
-      setBotCategoryCountdown(null);
+      setBotCategoryPicking(false);
       return;
     }
     botCategoryPickStarted.current = false;
-    setBotCategoryCountdown(5);
+    setBotCategoryPicking(true);
   }, [phase, userChoosesThisRound, eligibleBotSubs, currentRound, pickOptionsLoading]);
-
-  useEffect(() => {
-    if (botCategoryCountdown === null || botCategoryCountdown < 0) return;
-    if (botCategoryCountdown === 0) {
-      if (!eligibleBotSubs.length || botCategoryPickStarted.current) return;
-      botCategoryPickStarted.current = true;
-      const randomSub = eligibleBotSubs[Math.floor(Math.random() * eligibleBotSubs.length)];
-      setAnnouncementSub(randomSub);
-      setPhase('announcement');
-      setTimeout(() => { loadQuestionsForSub(randomSub); }, 4000);
-      return;
-    }
-    const id = setTimeout(() => setBotCategoryCountdown(c => (c === null || c <= 0 ? c : c - 1)), 1000);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botCategoryCountdown, eligibleBotSubs]);
 
   const loadQuestionsForSub = async (sub: any) => {
     setLoading(true);
@@ -2111,6 +2157,17 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     setLoading(false);
     setPhase('playing');
   };
+
+  const handleBotCategoryPickComplete = React.useCallback(() => {
+    if (!eligibleBotSubs.length || botCategoryPickStarted.current) return;
+    botCategoryPickStarted.current = true;
+    setBotCategoryPicking(false);
+    const randomSub = eligibleBotSubs[Math.floor(Math.random() * eligibleBotSubs.length)];
+    setAnnouncementSub(randomSub);
+    setPhase('announcement');
+    setTimeout(() => { loadQuestionsForSub(randomSub); }, 4000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligibleBotSubs]);
 
   const findBestGroupWithCache = async (subcategoryId: string, userIds: string[], localCache: string[]) => {
     const { data: allGroups } = await supabase
@@ -2289,8 +2346,8 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
           </div>
         );
       }
-      if (botCategoryCountdown !== null) {
-        return <BotTurnCountdownScreen emoji={opponentEmoji} name={opponentName} value={botCategoryCountdown} />;
+      if (botCategoryPicking) {
+        return <BotTurnProgressScreen emoji={opponentEmoji} name={opponentName} onComplete={handleBotCategoryPickComplete} />;
       }
       return (
         <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif' }}>
@@ -2792,8 +2849,8 @@ function DuelsList({ userId, onOpenDuel, onBack, onNewUserDuel }: { userId: stri
               let statusText = '';
               let statusColor = colors.muted;
               if (isDone) {
-                if (myScore > oppScore) { statusText = 'Gewonnen 🏆'; statusColor = '#4CAF50'; }
-                else if (myScore < oppScore) { statusText = 'Verloren'; statusColor = '#E53935'; }
+                if (myScore > oppScore) { statusText = 'Gewonnen 🏆'; statusColor = '#2D6A4F'; }
+                else if (myScore < oppScore) { statusText = 'Verloren'; statusColor = '#A68A64'; }
                 else { statusText = 'Unentschieden'; statusColor = colors.muted; }
               } else if (isMyTurn) {
                 statusText = 'Du bist dran!';
@@ -3099,7 +3156,7 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
           <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Username" value={searchUsername} onChange={e => setSearchUsername(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
           <button onClick={handleSearch} disabled={searching} style={{ ...btnPrimary, width: 'auto', padding: '0 20px', marginBottom: 0, fontSize: '13px' }}>Suchen</button>
         </div>
-        {searchMsg && <div style={{ fontSize: '13px', color: searchMsg.startsWith('✅') ? '#4CAF50' : '#E53935', marginTop: '8px' }}>{searchMsg}</div>}
+        {searchMsg && <div style={{ fontSize: '13px', color: searchMsg.startsWith('✅') ? '#2D6A4F' : '#A68A64', marginTop: '8px' }}>{searchMsg}</div>}
         {searchResult && (
           <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '15px', color: colors.text }}>{searchResult.username}</span>
@@ -3119,7 +3176,7 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
             <div key={req.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '14px', color: colors.text }}>{req.requester.username}</span>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => acceptRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Annehmen</button>
+                <button onClick={() => acceptRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#2D6A4F', color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Annehmen</button>
                 <button onClick={() => rejectRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.muted, border: `1px solid ${colors.muted}`, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Ablehnen</button>
               </div>
             </div>
