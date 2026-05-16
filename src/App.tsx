@@ -393,6 +393,127 @@ async function recordQuestionAnswer(questionId: string, isCorrect: boolean) {
   }
 }
 
+async function recordUserBookAnswer(bookId: string | undefined, isCorrect: boolean) {
+  if (!bookId) return;
+  const { error } = await supabase.rpc('record_user_book_answer', {
+    p_book_id: bookId,
+    p_is_correct: isCorrect,
+  });
+  if (error) {
+    const missing = error.code === 'PGRST202' || error.message?.includes('record_user_book_answer');
+    if (!missing) console.warn('record_user_book_answer:', error.message);
+  }
+}
+
+type UserBookAgg = { correct: number; wrong: number };
+
+async function aggregateUserBookStatsFromDuels(userId: string): Promise<Map<string, UserBookAgg>> {
+  const bookMap = new Map<string, UserBookAgg>();
+  const groupCache = new Map<string, { book_id: string }[]>();
+
+  const duels = await fetchPaginated<any>(async (from, to) =>
+    supabase
+      .from('duels')
+      .select('rounds_data, challenger_id')
+      .eq('status', 'completed')
+      .or(`challenger_id.eq.${userId},opponent_id.eq.${userId}`)
+      .range(from, to),
+  );
+
+  const addAnswers = (members: { book_id: string }[], answers: boolean[] | undefined) => {
+    if (!answers?.length) return;
+    answers.forEach((isCorrect, i) => {
+      const bookId = members[i]?.book_id;
+      if (!bookId) return;
+      const entry = bookMap.get(bookId) || { correct: 0, wrong: 0 };
+      if (isCorrect) entry.correct += 1;
+      else entry.wrong += 1;
+      bookMap.set(bookId, entry);
+    });
+  };
+
+  for (const duel of duels) {
+    const isChallenger = duel.challenger_id === userId;
+    for (const round of duel.rounds_data || []) {
+      if (!round?.group_id) continue;
+      let members = groupCache.get(round.group_id);
+      if (!members) {
+        const { data: groupMembers, error } = await supabase
+          .from('question_group_members')
+          .select('position, questions ( book_id )')
+          .eq('group_id', round.group_id)
+          .order('position', { ascending: true });
+        if (error) throw error;
+        members = (groupMembers || [])
+          .map(m => ({ book_id: (m.questions as any)?.book_id }))
+          .filter((m): m is { book_id: string } => !!m.book_id);
+        groupCache.set(round.group_id, members);
+      }
+      addAnswers(members, isChallenger ? round.challenger_answers : round.opponent_answers);
+    }
+  }
+
+  return bookMap;
+}
+
+async function loadUserBookRecommendations(userId: string) {
+  const merged = new Map<string, UserBookAgg>();
+
+  const { data: dbRows, error: dbError } = await supabase
+    .from('user_book_answer_stats')
+    .select('book_id, correct_count, wrong_count')
+    .eq('user_id', userId);
+
+  const tableMissing = dbError?.code === 'PGRST205' || dbError?.message?.includes('user_book_answer_stats');
+
+  if (!tableMissing && !dbError && dbRows?.length) {
+    dbRows.forEach(r => merged.set(r.book_id, { correct: r.correct_count, wrong: r.wrong_count }));
+  } else if (!tableMissing && !dbError && (dbRows?.length ?? 0) === 0) {
+    const fromDuels = await aggregateUserBookStatsFromDuels(userId);
+    if (fromDuels.size > 0) {
+      const payload = Array.from(fromDuels.entries()).map(([book_id, s]) => ({
+        user_id: userId,
+        book_id,
+        correct_count: s.correct,
+        wrong_count: s.wrong,
+        updated_at: new Date().toISOString(),
+      }));
+      const UPSERT_CHUNK = 100;
+      for (let i = 0; i < payload.length; i += UPSERT_CHUNK) {
+        await supabase.from('user_book_answer_stats').upsert(payload.slice(i, i + UPSERT_CHUNK));
+      }
+      fromDuels.forEach((v, id) => merged.set(id, v));
+    }
+  } else if (tableMissing) {
+    const fromDuels = await aggregateUserBookStatsFromDuels(userId);
+    fromDuels.forEach((v, id) => merged.set(id, v));
+  }
+
+  if (merged.size === 0) return [];
+
+  const bookIds = Array.from(merged.keys());
+  const { data: bookRows } = await supabase.from('books').select('id, title, author').in('id', bookIds);
+  const bookMeta = new Map((bookRows || []).map(b => [b.id, b]));
+
+  return Array.from(merged.entries())
+    .map(([bookId, s]) => {
+      const total = s.correct + s.wrong;
+      const wrongPct = total > 0 ? Math.round((s.wrong / total) * 100) : 0;
+      const meta = bookMeta.get(bookId);
+      return {
+        bookId,
+        title: meta?.title || 'Unbekanntes Buch',
+        author: meta?.author || '',
+        correct: s.correct,
+        wrong: s.wrong,
+        total,
+        wrongPct,
+      };
+    })
+    .filter(b => b.total > 0)
+    .sort((a, b) => b.wrongPct - a.wrongPct || b.total - a.total);
+}
+
 async function fetchAnswerStatsForQuestions(questionIds: string[]) {
   if (questionIds.length === 0) return new Map<string, { correct_count: number; wrong_count: number }>();
   const map = new Map<string, { correct_count: number; wrong_count: number }>();
@@ -1880,8 +2001,101 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
   );
 }
 
+function BookRecommender({ userId }: { userId: string }) {
+  const [items, setItems] = useState<{
+    bookId: string;
+    title: string;
+    author: string;
+    correct: number;
+    wrong: number;
+    total: number;
+    wrongPct: number;
+  }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const list = await loadUserBookRecommendations(userId);
+        if (!cancelled) setItems(list);
+      } catch (err) {
+        console.warn('BookRecommender:', err);
+        if (!cancelled) setItems([]);
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const wrongPctColor = (pct: number) => (pct >= 70 ? '#A68A64' : pct >= 50 ? '#FF9800' : '#6B7B8C');
+
+  if (loading) {
+    return <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>LADEN...</p>;
+  }
+
+  return (
+    <div>
+      <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '20px', lineHeight: 1.5 }}>
+        Bücher mit den meisten Fehlern — ideal zum Nachlesen. Sortiert nach Fehlerquote (höchste zuerst).
+      </p>
+      {items.length === 0 ? (
+        <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>Noch keine Buch-Daten. Spiele ein paar Duelle!</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {items.map((book, index) => (
+            <div
+              key={book.bookId}
+              style={{
+                backgroundColor: '#FFFFFF',
+                border: `1px solid ${index === 0 ? '#A68A64' : 'rgba(0,0,0,0.08)'}`,
+                borderRadius: '8px',
+                padding: '14px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                backgroundColor: index < 3 ? '#F7F2EB' : colors.light,
+                color: index < 3 ? '#A68A64' : colors.muted,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '14px',
+                fontWeight: 700,
+                flexShrink: 0,
+              }}>
+                {index + 1}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '15px', color: colors.text, fontWeight: 600, marginBottom: '2px' }}>{book.title}</div>
+                {book.author ? (
+                  <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '8px' }}>{book.author}</div>
+                ) : null}
+                <div style={{ height: '5px', backgroundColor: colors.light, borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${book.wrongPct}%`, backgroundColor: wrongPctColor(book.wrongPct), borderRadius: '3px' }} />
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: wrongPctColor(book.wrongPct) }}>{book.wrongPct}%</div>
+                <div style={{ fontSize: '11px', color: colors.muted }}>falsch</div>
+                <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>{book.wrong}✗ · {book.correct}✓</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) {
-  const [tab, setTab] = useState<'stats' | 'leaderboard' | 'myduels'>('stats');
+  const [tab, setTab] = useState<'stats' | 'books' | 'leaderboard' | 'myduels'>('stats');
   const [scores, setScores] = useState<any[]>([]);
   const [, setCategories] = useState<any[]>([]);  const [loading, setLoading] = useState(true);
   const [myDuels, setMyDuels] = useState<any[]>([]);
@@ -2028,15 +2242,39 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
         <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>STATISTIK</h2>
 
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: `1px solid ${colors.light}`, paddingBottom: '0' }}>
-          {(['stats', 'leaderboard', 'myduels'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ padding: '10px 16px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: 'transparent', color: tab === t ? colors.primary : colors.muted, borderBottom: tab === t ? `2px solid ${colors.primary}` : '2px solid transparent', fontWeight: tab === t ? 'bold' : 'normal', letterSpacing: '1px' }}>
-              {t === 'stats' ? 'MEINE STATS' : t === 'leaderboard' ? 'RANGLISTE' : 'MEINE DUELLE'}
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: `1px solid ${colors.light}`, paddingBottom: '0', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          {([
+            { id: 'stats' as const, label: 'MEINE STATS' },
+            { id: 'books' as const, label: 'BÜCHER' },
+            { id: 'leaderboard' as const, label: 'RANGLISTE' },
+            { id: 'myduels' as const, label: 'MEINE DUELLE' },
+          ]).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              style={{
+                padding: '10px 12px',
+                border: 'none',
+                cursor: 'pointer',
+                fontFamily: 'Helvetica, Arial, sans-serif',
+                fontSize: '12px',
+                backgroundColor: 'transparent',
+                color: tab === t.id ? colors.primary : colors.muted,
+                borderBottom: tab === t.id ? `2px solid ${colors.primary}` : '2px solid transparent',
+                fontWeight: tab === t.id ? 'bold' : 'normal',
+                letterSpacing: '0.5px',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+              }}
+            >
+              {t.label}
             </button>
           ))}
         </div>
 
-        {loading ? <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>LADEN...</p> : (
+        {tab === 'books' ? (
+          <BookRecommender userId={userId} />
+        ) : loading ? <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>LADEN...</p> : (
           <>
             {/* MEINE STATS */}
             {tab === 'stats' && (
@@ -2328,6 +2566,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, userId, onRoundCo
       const userIsCorrect = !isTimeout && answer === q.correct_answer;
       if (userId && q?.id) {
         recordQuestionAnswer(q.id, userIsCorrect);
+        recordUserBookAnswer(q.book_id, userIsCorrect);
       }
 
       let bAnswer: string | null = null;
