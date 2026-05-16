@@ -1,6 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from './supabase';
 import * as XLSX from 'xlsx';
+import {
+  createNotification,
+  getPushPermission,
+  isPushSubscribed,
+  isPushSupported,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from './pushNotifications';
 
 const colors = {
   bg: '#FAFAF8',
@@ -12,6 +20,29 @@ const colors = {
 
 const fontDisplay = "'Playfair Display', Georgia, serif";
 const fontBody = "'DM Sans', Helvetica, Arial, sans-serif";
+
+const screenShell: React.CSSProperties = {
+  minHeight: '100vh',
+  backgroundColor: colors.bg,
+  fontFamily: fontBody,
+};
+
+const pageHeading: React.CSSProperties = {
+  fontFamily: fontDisplay,
+  color: colors.primary,
+  letterSpacing: '2px',
+};
+
+const backLinkStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: colors.muted,
+  cursor: 'pointer',
+  fontFamily: fontBody,
+  fontSize: '14px',
+  marginBottom: '24px',
+  padding: '8px 0',
+};
 
 function avatarColor(username: string): string {
   const colors = ['#6B1E2E', '#1E4D6B', '#2E6B1E', '#6B4F1E', '#4B1E6B', '#1E6B5B', '#6B1E4F'];
@@ -56,6 +87,88 @@ const btnSecondary: React.CSSProperties = {
   color: colors.primary,
   border: `2px solid ${colors.primary}`,
 };
+
+const emptyStateBtn: React.CSSProperties = {
+  ...btnPrimary,
+  width: 'auto',
+  minWidth: '200px',
+  padding: '12px 20px',
+  fontSize: '13px',
+  marginBottom: 0,
+};
+
+const emptyStateBtnSecondary: React.CSSProperties = {
+  ...emptyStateBtn,
+  backgroundColor: 'transparent',
+  color: colors.primary,
+  border: `2px solid ${colors.primary}`,
+  marginTop: '10px',
+};
+
+function EmptyState({
+  icon = '📭',
+  title,
+  description,
+  actionLabel,
+  onAction,
+  secondaryLabel,
+  onSecondary,
+}: {
+  icon?: string;
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  secondaryLabel?: string;
+  onSecondary?: () => void;
+}) {
+  return (
+    <div
+      style={{
+        backgroundColor: '#FFFFFF',
+        border: '1px solid rgba(0,0,0,0.08)',
+        borderRadius: '8px',
+        padding: '28px 20px',
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: '36px', marginBottom: '12px', lineHeight: 1 }} aria-hidden>{icon}</div>
+      <p style={{ fontSize: '15px', color: colors.text, fontFamily: fontBody, fontWeight: 600, margin: '0 0 8px' }}>{title}</p>
+      <p style={{ fontSize: '14px', color: colors.muted, fontFamily: fontBody, lineHeight: 1.5, margin: '0 0 20px', maxWidth: '320px', marginLeft: 'auto', marginRight: 'auto' }}>{description}</p>
+      {actionLabel && onAction ? (
+        <button type="button" onClick={onAction} style={emptyStateBtn}>{actionLabel}</button>
+      ) : null}
+      {secondaryLabel && onSecondary ? (
+        <div>
+          <button type="button" onClick={onSecondary} style={emptyStateBtnSecondary}>{secondaryLabel}</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DuelFinishActions({
+  onRematch,
+  onFinish,
+  rematchLabel = 'Revanche',
+}: {
+  onRematch?: () => void;
+  onFinish: () => void;
+  rematchLabel?: string;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+      {onRematch ? (
+        <button type="button" onClick={onRematch} style={btnPrimary}>
+          {rematchLabel}
+        </button>
+      ) : null}
+      <button type="button" onClick={onFinish} style={onRematch ? btnSecondary : btnPrimary}>
+        Zurück zum Dashboard
+      </button>
+    </div>
+  );
+}
 
 const bots = [
   { name: 'Walter Tell', level: 1, accuracy: 0.3, emoji: '🏹' },
@@ -382,6 +495,13 @@ function answerSuccessPct(correct: number, wrong: number): string {
   return `${Math.round((correct / total) * 100)}`;
 }
 
+function isValidBookForRecommender(title: string | null | undefined): boolean {
+  const t = String(title ?? '').trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  return lower !== 'none' && lower !== 'null';
+}
+
 async function recordQuestionAnswer(questionId: string, isCorrect: boolean) {
   const { error } = await supabase.rpc('record_question_answer', {
     p_question_id: questionId,
@@ -500,18 +620,188 @@ async function loadUserBookRecommendations(userId: string) {
       const total = s.correct + s.wrong;
       const wrongPct = total > 0 ? Math.round((s.wrong / total) * 100) : 0;
       const meta = bookMeta.get(bookId);
+      const title = meta?.title?.trim() || '';
       return {
         bookId,
-        title: meta?.title || 'Unbekanntes Buch',
-        author: meta?.author || '',
+        title,
+        author: meta?.author?.trim() || '',
         correct: s.correct,
         wrong: s.wrong,
         total,
         wrongPct,
       };
     })
-    .filter(b => b.total > 0)
+    .filter(b => b.total > 0 && isValidBookForRecommender(b.title))
     .sort((a, b) => b.wrongPct - a.wrongPct || b.total - a.total);
+}
+
+type BookPick = {
+  bookId: string;
+  title: string;
+  author: string;
+  wrongPct?: number;
+  wrongInDuel?: number;
+  searchUrl: string;
+};
+
+function buildBookSearchUrl(title: string, author?: string): string {
+  const q = [title, author].filter(Boolean).join(' ').trim();
+  return `https://www.google.com/search?tbm=bks&q=${encodeURIComponent(q)}`;
+}
+
+function collectWrongBookCountsFromDuelRounds(rounds: { questions: any[]; userAnswers: boolean[] }[]): Map<string, number> {
+  const wrongByBook = new Map<string, number>();
+  for (const r of rounds) {
+    (r.questions || []).forEach((q: any, qi: number) => {
+      if (r.userAnswers[qi]) return;
+      const bookId = q?.book_id;
+      if (!bookId) return;
+      wrongByBook.set(bookId, (wrongByBook.get(bookId) || 0) + 1);
+    });
+  }
+  return wrongByBook;
+}
+
+async function getPersonalizedBookPicks(
+  userId: string,
+  duelRounds: { questions: any[]; userAnswers: boolean[] }[],
+  limit = 2,
+): Promise<BookPick[]> {
+  const wrongByBook = collectWrongBookCountsFromDuelRounds(duelRounds);
+  const orderedIds = Array.from(wrongByBook.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id);
+
+  const allRecs = await loadUserBookRecommendations(userId);
+  for (const rec of allRecs) {
+    if (orderedIds.length >= limit) break;
+    if (!orderedIds.includes(rec.bookId)) orderedIds.push(rec.bookId);
+  }
+
+  const bookIds = orderedIds.slice(0, limit);
+  if (bookIds.length === 0) return [];
+
+  const { data: bookRows } = await supabase.from('books').select('id, title, author').in('id', bookIds);
+  const meta = new Map((bookRows || []).map(b => [b.id, b]));
+  const recById = new Map(allRecs.map(r => [r.bookId, r]));
+
+  const picks: BookPick[] = [];
+  for (const id of bookIds) {
+    const m = meta.get(id);
+    const title = m?.title?.trim() || '';
+    if (!isValidBookForRecommender(title)) continue;
+    const author = m?.author?.trim() || '';
+    const rec = recById.get(id);
+    picks.push({
+      bookId: id,
+      title,
+      author,
+      wrongPct: rec?.wrongPct,
+      wrongInDuel: wrongByBook.get(id),
+      searchUrl: buildBookSearchUrl(title, author),
+    });
+  }
+  return picks;
+}
+
+function buildBotDuelRoundsData(
+  roundSubcategories: any[],
+  roundUserAnswers: boolean[][],
+  roundBotAnswers: boolean[][],
+  roundUserSelectionsPlayed: string[][],
+): Record<string, unknown>[] {
+  return roundUserAnswers.map((userAnswers, i) => ({
+    round: i + 1,
+    subcategory_id: roundSubcategories[i]?.id,
+    subcategory_name: roundSubcategories[i]?.name || '—',
+    group_id: roundSubcategories[i]?.group_id,
+    group_number: roundSubcategories[i]?.group_number,
+    challenger_answers: userAnswers || [],
+    opponent_answers: roundBotAnswers[i] || [],
+    challenger_selections: roundUserSelectionsPlayed[i] || [],
+  }));
+}
+
+function DuelBookRecommendations({
+  picks,
+  loading,
+  onViewAll,
+}: {
+  picks: BookPick[];
+  loading: boolean;
+  onViewAll?: () => void;
+}) {
+  if (loading) {
+    return (
+      <p style={{ color: colors.muted, fontSize: '13px', textAlign: 'center', marginBottom: '24px' }}>
+        Lese-Empfehlungen werden geladen…
+      </p>
+    );
+  }
+  if (picks.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: '24px', textAlign: 'left' }}>
+      <h3 style={{ fontSize: '14px', color: colors.text, letterSpacing: '1px', marginBottom: '4px', fontWeight: 'bold' }}>
+        Diese {picks.length} Bücher solltest du lesen
+      </h3>
+      <p style={{ fontSize: '12px', color: colors.muted, marginBottom: '14px', lineHeight: 1.45 }}>
+        Personalisiert aus deinen Fehlern in diesem Duell und deinem Book Recommender.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {picks.map((book, index) => (
+          <a
+            key={book.bookId}
+            href={book.searchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              backgroundColor: '#FFFFFF',
+              border: `1px solid ${index === 0 ? '#A68A64' : 'rgba(0,0,0,0.08)'}`,
+              borderRadius: '8px',
+              padding: '14px 16px',
+              textDecoration: 'none',
+              color: 'inherit',
+              display: 'block',
+            }}
+          >
+            <div style={{ fontSize: '15px', color: colors.text, fontWeight: 600, marginBottom: '4px' }}>{book.title}</div>
+            {book.author ? (
+              <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '8px' }}>{book.author}</div>
+            ) : null}
+            <div style={{ fontSize: '12px', color: colors.primary, fontWeight: 500 }}>
+              {book.wrongInDuel
+                ? `${book.wrongInDuel}× falsch in diesem Duell`
+                : book.wrongPct != null
+                  ? `${book.wrongPct}% falsch insgesamt (Book Recommender)`
+                  : 'Buch ansehen'}
+              {' · '}
+              <span style={{ textDecoration: 'underline' }}>Link öffnen</span>
+            </div>
+          </a>
+        ))}
+      </div>
+      {onViewAll ? (
+        <button
+          type="button"
+          onClick={onViewAll}
+          style={{
+            marginTop: '12px',
+            background: 'none',
+            border: 'none',
+            color: colors.muted,
+            fontSize: '13px',
+            cursor: 'pointer',
+            fontFamily: fontBody,
+            textDecoration: 'underline',
+            padding: 0,
+          }}
+        >
+          Alle Empfehlungen im Book Recommender
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 async function fetchAnswerStatsForQuestions(questionIds: string[]) {
@@ -1110,10 +1400,10 @@ function AdminImport({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>FRAGEN IMPORTIEREN</h2>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ ...pageHeading, marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>FRAGEN IMPORTIEREN</h2>
 
         <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', marginBottom: '24px' }}>
           <h3 style={{ fontSize: '16px', color: colors.text, marginBottom: '12px' }}>CSV-Format:</h3>
@@ -1128,7 +1418,7 @@ Welches Jahr...,multiple_choice,A,1515,1520,1525,1530,2,Geschichte der Schweiz,A
           </p>
         </div>
 
-        <input type="file" accept=".csv" onChange={handleFileUpload} style={{ marginBottom: '24px', fontFamily: 'Helvetica, Arial, sans-serif' }} />
+        <input type="file" accept=".csv" onChange={handleFileUpload} style={{ marginBottom: '24px', fontFamily: fontBody }} />
 
         {questions.length > 0 && (
           <>
@@ -1304,7 +1594,7 @@ function QuestionAnswerStatsInbox() {
 
   const rebuildFromDuels = async () => {
     if (!window.confirm(
-      'Alle Antwort-Zähler werden aus abgeschlossenen Spieler-Duellen neu berechnet (überschreibt bestehende Werte). Bot-Partien zählen nur mit, wenn sie nach dem Update gespielt wurden. Fortfahren?',
+      'Alle Antwort-Zähler werden aus abgeschlossenen Duellen neu berechnet (Spieler- und Bot-Partien mit gespeicherten Runden). Überschreibt bestehende Werte. Fortfahren?',
     )) return;
     setRebuilding(true);
     setRebuildMessage('');
@@ -1595,8 +1885,8 @@ function ReportedQuestions() {
   return (
     <div>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-        <button onClick={() => setFilter('open')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: filter === 'open' ? colors.primary : colors.light, color: filter === 'open' ? colors.bg : colors.text }}>Offen ({reports.filter(r => r.status === 'open').length})</button>
-        <button onClick={() => setFilter('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '13px', backgroundColor: filter === 'all' ? colors.primary : colors.light, color: filter === 'all' ? colors.bg : colors.text }}>Alle</button>
+        <button onClick={() => setFilter('open')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: fontBody, fontSize: '13px', backgroundColor: filter === 'open' ? colors.primary : colors.light, color: filter === 'open' ? colors.bg : colors.text }}>Offen ({reports.filter(r => r.status === 'open').length})</button>
+        <button onClick={() => setFilter('all')} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontFamily: fontBody, fontSize: '13px', backgroundColor: filter === 'all' ? colors.primary : colors.light, color: filter === 'all' ? colors.bg : colors.text }}>Alle</button>
       </div>
 
       {reports.length === 0 ? (
@@ -1691,10 +1981,10 @@ function Notifications({ userId, onBack }: { userId: string, onBack: () => void 
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>BENACHRICHTIGUNGEN</h2>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ ...pageHeading, marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>BENACHRICHTIGUNGEN</h2>
         {loading ? (
           <p style={{ color: colors.muted, textAlign: 'center' }}>LADEN...</p>
         ) : notifications.length === 0 ? (
@@ -1788,7 +2078,7 @@ function UserSearch({ userId, onBack, onChallenge }: { userId: string, onBack: (
       setMessage('Freundschaftsanfrage konnte nicht gesendet werden.');
     } else {
       const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
-      await supabase.from('notifications').insert({
+      await createNotification({
         user_id: searchResult.id,
         type: 'friend_request',
         title: 'Neue Freundschaftsanfrage',
@@ -1812,10 +2102,10 @@ function UserSearch({ userId, onBack, onChallenge }: { userId: string, onBack: (
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>SPIELER SUCHEN</h2>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ ...pageHeading, marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>SPIELER SUCHEN</h2>
 
         <div style={{ marginBottom: '32px' }}>
           <input style={inputStyle} placeholder="Username eingeben" value={searchUsername} onChange={e => setSearchUsername(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
@@ -1905,18 +2195,18 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+      <p style={{ color: colors.muted, fontFamily: fontBody, letterSpacing: '2px' }}>LADEN...</p>
     </div>
   );
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         
         <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h2 style={{ color: colors.text, fontSize: '20px', margin: 0 }}>vs {oppName}</h2>
+            <h2 style={{ ...pageHeading, fontSize: '20px', margin: 0, fontWeight: 500 }}>vs {oppName}</h2>
             <div style={{ fontSize: '24px', fontWeight: 'bold', color: colors.primary }}>{myScore} : {oppScore}</div>
           </div>
           <div style={{ fontSize: '13px', color: colors.muted }}>{duel.categories?.name}</div>
@@ -1978,7 +2268,7 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
 
                     <button 
                       onClick={() => setReportingQuestion(q)} 
-                      style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', border: `1px solid ${colors.primary}`, color: colors.primary, borderRadius: '8px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}
+                      style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', border: `1px solid ${colors.primary}`, color: colors.primary, borderRadius: '8px', cursor: 'pointer', fontFamily: fontBody }}
                     >
                       ⚠️ Frage melden
                     </button>
@@ -2001,7 +2291,7 @@ function DuelDetail({ duel, userId, onBack }: { duel: any, userId: string, onBac
   );
 }
 
-function BookRecommender({ userId }: { userId: string }) {
+function BookRecommender({ userId, onStartBotDuel }: { userId: string; onStartBotDuel: () => void }) {
   const [items, setItems] = useState<{
     bookId: string;
     title: string;
@@ -2012,6 +2302,9 @@ function BookRecommender({ userId }: { userId: string }) {
     wrongPct: number;
   }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [onlyMinTwoWrong, setOnlyMinTwoWrong] = useState(true);
+
+  const displayItems = onlyMinTwoWrong ? items.filter((b) => b.wrong >= 2) : items;
 
   useEffect(() => {
     let cancelled = false;
@@ -2036,17 +2329,62 @@ function BookRecommender({ userId }: { userId: string }) {
   }
 
   return (
-    <div>
-      <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '20px', lineHeight: 1.5 }}>
+    <div className="bs-tab-enter">
+      <p style={{ fontSize: '13px', color: colors.muted, marginBottom: '12px', lineHeight: 1.5 }}>
         Bücher mit den meisten Fehlern — ideal zum Nachlesen. Sortiert nach Fehlerquote (höchste zuerst).
       </p>
+      {items.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => setOnlyMinTwoWrong((v) => !v)}
+          style={{
+            display: 'block',
+            width: '100%',
+            marginBottom: '16px',
+            padding: '10px 14px',
+            borderRadius: '8px',
+            border: `1px solid ${onlyMinTwoWrong ? colors.primary : 'rgba(0,0,0,0.08)'}`,
+            backgroundColor: onlyMinTwoWrong ? colors.primary : '#FFFFFF',
+            color: onlyMinTwoWrong ? colors.bg : colors.text,
+            fontFamily: fontBody,
+            fontSize: '13px',
+            fontWeight: onlyMinTwoWrong ? 600 : 400,
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          {onlyMinTwoWrong ? '✓ ' : ''}Nur Bücher mit ≥2 Fehlern
+          {onlyMinTwoWrong && items.length > displayItems.length ? (
+            <span style={{ display: 'block', fontSize: '11px', fontWeight: 400, marginTop: '4px', opacity: 0.85 }}>
+              {displayItems.length} von {items.length} Büchern
+            </span>
+          ) : null}
+        </button>
+      ) : null}
       {items.length === 0 ? (
-        <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>Noch keine Buch-Daten. Spiele ein paar Duelle!</p>
+        <EmptyState
+          icon="📚"
+          title="Noch keine Buch-Daten"
+          description="Spiele mindestens ein Duell — danach siehst du, welche Bücher du am häufigsten falsch beantwortet hast."
+          actionLabel="Bot-Duell starten"
+          onAction={onStartBotDuel}
+        />
+      ) : displayItems.length === 0 ? (
+        <EmptyState
+          icon="📚"
+          title="Keine Bücher mit ≥2 Fehlern"
+          description="Mit dem aktiven Filter gibt es keine Treffer. Deaktiviere den Filter, um auch Bücher mit einer einzelnen Fehlantwort zu sehen."
+          actionLabel="Filter aus"
+          onAction={() => setOnlyMinTwoWrong(false)}
+        />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {items.map((book, index) => (
-            <div
+          {displayItems.map((book, index) => (
+            <a
               key={book.bookId}
+              href={buildBookSearchUrl(book.title, book.author)}
+              target="_blank"
+              rel="noopener noreferrer"
               style={{
                 backgroundColor: '#FFFFFF',
                 border: `1px solid ${index === 0 ? '#A68A64' : 'rgba(0,0,0,0.08)'}`,
@@ -2055,6 +2393,8 @@ function BookRecommender({ userId }: { userId: string }) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
+                textDecoration: 'none',
+                color: 'inherit',
               }}
             >
               <div style={{
@@ -2085,8 +2425,9 @@ function BookRecommender({ userId }: { userId: string }) {
                 <div style={{ fontSize: '20px', fontWeight: 700, color: wrongPctColor(book.wrongPct) }}>{book.wrongPct}%</div>
                 <div style={{ fontSize: '11px', color: colors.muted }}>falsch</div>
                 <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>{book.wrong}✗ · {book.correct}✓</div>
+                <div style={{ fontSize: '11px', color: colors.primary, marginTop: '4px', textDecoration: 'underline' }}>Buch-Link</div>
               </div>
-            </div>
+            </a>
           ))}
         </div>
       )}
@@ -2094,10 +2435,32 @@ function BookRecommender({ userId }: { userId: string }) {
   );
 }
 
-function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) {
-  const [tab, setTab] = useState<'stats' | 'books' | 'leaderboard' | 'myduels'>('stats');
+function Highscores({
+  onBack,
+  userId,
+  onStartBotDuel,
+  initialTab,
+  onInitialTabConsumed,
+}: {
+  onBack: () => void;
+  userId: string;
+  onStartBotDuel: () => void;
+  initialTab?: 'stats' | 'books' | 'leaderboard' | 'myduels';
+  onInitialTabConsumed?: () => void;
+}) {
+  const [tab, setTab] = useState<'stats' | 'books' | 'leaderboard' | 'myduels'>(initialTab || 'stats');
+
+  useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+      onInitialTabConsumed?.();
+    }
+  }, [initialTab, onInitialTabConsumed]);
   const [scores, setScores] = useState<any[]>([]);
-  const [, setCategories] = useState<any[]>([]);  const [loading, setLoading] = useState(true);
+  const [allCategories, setAllCategories] = useState<any[]>([]);
+  const [leaderboardScope, setLeaderboardScope] = useState<'global' | 'friends'>('global');
+  const [leaderboardCategoryId, setLeaderboardCategoryId] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
   const [myDuels, setMyDuels] = useState<any[]>([]);
   const [selectedDuel, setSelectedDuel] = useState<any>(null);
   const [myStats, setMyStats] = useState<any[]>([]);
@@ -2105,15 +2468,19 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
   const [subStats, setSubStats] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
-    supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
+    supabase.from('categories').select('*').then(({ data }) => setAllCategories(data || []));
   }, []);
 
   useEffect(() => {
     if (tab === 'stats') loadMyStats();
-    else if (tab === 'leaderboard') loadLeaderboard();
-    else loadMyDuels();
+    else if (tab === 'myduels') loadMyDuels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  useEffect(() => {
+    if (tab === 'leaderboard') loadLeaderboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, leaderboardScope, leaderboardCategoryId]);
   const loadMyStats = async () => {
     setLoading(true);
     // Load all played duels for this user
@@ -2180,24 +2547,47 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
 
   const loadLeaderboard = async () => {
     setLoading(true);
-    const { data: duels } = await supabase
+
+    let allowedUserIds: Set<string> | null = null;
+    if (leaderboardScope === 'friends') {
+      const { data: friendships } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+      allowedUserIds = new Set<string>([userId]);
+      (friendships || []).forEach((f) => {
+        allowedUserIds!.add(f.requester_id);
+        allowedUserIds!.add(f.addressee_id);
+      });
+    }
+
+    let duelsQuery = supabase
       .from('duels')
       .select('challenger_id, opponent_id, rounds_data, category_id, categories(name)')
       .eq('status', 'completed');
 
-    const userMap: Record<string, { correct: number, total: number }> = {};
+    if (leaderboardCategoryId !== 'all') {
+      duelsQuery = duelsQuery.eq('category_id', leaderboardCategoryId);
+    }
+
+    const { data: duels } = await duelsQuery;
+
+    const userMap: Record<string, { correct: number; total: number }> = {};
+    const addAnswers = (playerId: string | null, answers: boolean[]) => {
+      if (!playerId) return;
+      if (allowedUserIds && !allowedUserIds.has(playerId)) return;
+      if (!userMap[playerId]) userMap[playerId] = { correct: 0, total: 0 };
+      userMap[playerId].correct += answers.filter(Boolean).length;
+      userMap[playerId].total += answers.length;
+    };
+
     (duels || []).forEach((d: any) => {
       if (!d.rounds_data) return;
       const cAnswers = d.rounds_data.flatMap((r: any) => r.challenger_answers || []);
       const oAnswers = d.rounds_data.flatMap((r: any) => r.opponent_answers || []);
-      if (!userMap[d.challenger_id]) userMap[d.challenger_id] = { correct: 0, total: 0 };
-      userMap[d.challenger_id].correct += cAnswers.filter(Boolean).length;
-      userMap[d.challenger_id].total += cAnswers.length;
-      if (d.opponent_id) {
-        if (!userMap[d.opponent_id]) userMap[d.opponent_id] = { correct: 0, total: 0 };
-        userMap[d.opponent_id].correct += oAnswers.filter(Boolean).length;
-        userMap[d.opponent_id].total += oAnswers.length;
-      }
+      addAnswers(d.challenger_id, cAnswers);
+      addAnswers(d.opponent_id, oAnswers);
     });
 
     const userIds = Object.keys(userMap).filter(id => userMap[id].total >= 9);
@@ -2237,15 +2627,15 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
   if (selectedDuel) return <DuelDetail duel={selectedDuel} userId={userId} onBack={() => setSelectedDuel(null)} />;
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={screenShell}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>STATISTIK</h2>
+        <button type="button" onClick={onBack} style={backLinkStyle}>← Zurück</button>
+        <h2 style={{ ...pageHeading, marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>STATISTIK</h2>
 
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: `1px solid ${colors.light}`, paddingBottom: '0', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {([
             { id: 'stats' as const, label: 'MEINE STATS' },
-            { id: 'books' as const, label: 'Book Recommender' },
+            { id: 'books' as const, label: 'BOOK RECOMMENDER' },
             { id: 'leaderboard' as const, label: 'RANGLISTE' },
             { id: 'myduels' as const, label: 'MEINE DUELLE' },
           ]).map(t => (
@@ -2256,7 +2646,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
                 padding: '10px 12px',
                 border: 'none',
                 cursor: 'pointer',
-                fontFamily: 'Helvetica, Arial, sans-serif',
+                fontFamily: fontBody,
                 fontSize: '12px',
                 backgroundColor: 'transparent',
                 color: tab === t.id ? colors.primary : colors.muted,
@@ -2273,14 +2663,20 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
         </div>
 
         {tab === 'books' ? (
-          <BookRecommender userId={userId} />
+          <BookRecommender userId={userId} onStartBotDuel={onStartBotDuel} />
         ) : loading ? <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>LADEN...</p> : (
-          <>
+          <div key={tab} className="bs-tab-enter">
             {/* MEINE STATS */}
             {tab === 'stats' && (
               <div>
                 {myStats.length === 0 ? (
-                  <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>Noch keine Duelle gespielt</p>
+                  <EmptyState
+                    icon="📊"
+                    title="Noch keine Statistik"
+                    description="Spiele ein Duell, um deine Trefferquote pro Kategorie zu sehen."
+                    actionLabel="Bot-Duell starten"
+                    onAction={onStartBotDuel}
+                  />
                 ) : myStats.map(cat => (
                   <div key={cat.id} style={{ marginBottom: '8px' }}>
                     <div onClick={() => { setExpandedCategory(expandedCategory === cat.id ? null : cat.id); loadSubStats(cat.id); }} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -2297,7 +2693,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
                       <div style={{ color: colors.muted, fontSize: '12px' }}>{expandedCategory === cat.id ? '▲' : '▼'}</div>
                     </div>
                     {expandedCategory === cat.id && (
-                      <div style={{ backgroundColor: '#FAF8F4', border: '0.5px solid rgba(0,0,0,0.08)', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: '8px 16px' }}>
+                      <div className="bs-expand-enter" style={{ backgroundColor: '#FAF8F4', border: '0.5px solid rgba(0,0,0,0.08)', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: '8px 16px' }}>
                         {!subStats[cat.id] ? (
                           <p style={{ color: colors.muted, fontSize: '13px', padding: '8px 0' }}>Laden...</p>
                         ) : subStats[cat.id].length === 0 ? (
@@ -2326,8 +2722,87 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
             {/* RANGLISTE */}
             {tab === 'leaderboard' && (
               <div>
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                    {([
+                      { id: 'global' as const, label: 'Global' },
+                      { id: 'friends' as const, label: 'Freunde' },
+                    ]).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setLeaderboardScope(opt.id)}
+                        style={{
+                          flex: 1,
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${leaderboardScope === opt.id ? colors.primary : 'rgba(0,0,0,0.08)'}`,
+                          backgroundColor: leaderboardScope === opt.id ? colors.primary : '#FFFFFF',
+                          color: leaderboardScope === opt.id ? colors.bg : colors.text,
+                          fontFamily: fontBody,
+                          fontSize: '13px',
+                          fontWeight: leaderboardScope === opt.id ? 600 : 400,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setLeaderboardCategoryId('all')}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: '20px',
+                        border: `1px solid ${leaderboardCategoryId === 'all' ? colors.primary : 'rgba(0,0,0,0.08)'}`,
+                        backgroundColor: leaderboardCategoryId === 'all' ? colors.primary : '#FFFFFF',
+                        color: leaderboardCategoryId === 'all' ? colors.bg : colors.text,
+                        fontFamily: fontBody,
+                        fontSize: '12px',
+                        whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      Alle Kategorien
+                    </button>
+                    {allCategories.map((cat) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setLeaderboardCategoryId(cat.id)}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: '20px',
+                          border: `1px solid ${leaderboardCategoryId === cat.id ? colors.primary : 'rgba(0,0,0,0.08)'}`,
+                          backgroundColor: leaderboardCategoryId === cat.id ? colors.primary : '#FFFFFF',
+                          color: leaderboardCategoryId === cat.id ? colors.bg : colors.text,
+                          fontFamily: fontBody,
+                          fontSize: '12px',
+                          whiteSpace: 'nowrap',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {scores.length === 0 ? (
-                  <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>Noch keine Daten (min. 3 Duelle nötig)</p>
+                  <EmptyState
+                    icon="🏆"
+                    title={leaderboardScope === 'friends' ? 'Freundeskreis noch leer' : 'Rangliste noch leer'}
+                    description={
+                      leaderboardScope === 'friends'
+                        ? 'Freunde brauchen min. 3 abgeschlossene Duelle (9+ beantwortete Fragen) in der gewählten Kategorie — oder füge Freunde hinzu.'
+                        : 'Mindestens 9 beantwortete Fragen (ca. 3 Duelle) in der gewählten Kategorie nötig.'
+                    }
+                    actionLabel={leaderboardScope === 'friends' ? undefined : 'Bot-Duell starten'}
+                    onAction={leaderboardScope === 'friends' ? undefined : onStartBotDuel}
+                  />
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {scores.map((s, i) => (
@@ -2354,7 +2829,13 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
             {tab === 'myduels' && (
               <div>
                 {myDuels.length === 0 ? (
-                  <p style={{ color: colors.muted, textAlign: 'center', padding: '48px 0' }}>Noch keine abgeschlossenen Duelle</p>
+                  <EmptyState
+                    icon="⚔️"
+                    title="Noch keine abgeschlossenen Duelle"
+                    description="Spiele ein Bot-Duell oder fordere einen Spieler heraus — deine Ergebnisse erscheinen hier."
+                    actionLabel="Bot-Duell starten"
+                    onAction={onStartBotDuel}
+                  />
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {myDuels.map(d => {
@@ -2382,7 +2863,7 @@ function Highscores({ onBack, userId }: { onBack: () => void, userId: string }) 
                 )}
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -2453,7 +2934,7 @@ function BotCategoryPickFlow({
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: fontBody }}>
-      <div style={{ textAlign: 'center', maxWidth: '420px', width: '100%' }}>
+      <div className="bs-fade-in" style={{ textAlign: 'center', maxWidth: '420px', width: '100%' }}>
         <div style={{ fontSize: 'clamp(52px, 16vw, 80px)', marginBottom: '20px', lineHeight: 1 }}>{emoji}</div>
         <p style={{ color: colors.text, fontSize: 'clamp(17px, 4vw, 20px)', marginBottom: '28px', fontFamily: fontBody }}>
           <strong>{name}</strong> spielt
@@ -2495,43 +2976,6 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, userId, onRoundCo
   const [animateQuestion, setAnimateQuestion] = useState(false);
   const [shakeAnswer, setShakeAnswer] = useState(false);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
-
-  // CSS animations injected once
-  React.useEffect(() => {
-    const style = document.createElement('style');
-    style.innerHTML = `
-      @keyframes slideInRight {
-        from { opacity: 0; transform: translateX(40px); }
-        to { opacity: 1; transform: translateX(0); }
-      }
-      @keyframes slideInLeft {
-        from { opacity: 0; transform: translateX(-40px); }
-        to { opacity: 1; transform: translateX(0); }
-      }
-      @keyframes shake {
-        0%, 100% { transform: translateX(0); }
-        20% { transform: translateX(-8px); }
-        40% { transform: translateX(8px); }
-        60% { transform: translateX(-5px); }
-        80% { transform: translateX(5px); }
-      }
-      @keyframes popIn {
-        0% { transform: scale(0.5); opacity: 0; }
-        70% { transform: scale(1.2); opacity: 1; }
-        100% { transform: scale(1); opacity: 1; }
-      }
-      @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-      }
-      .slide-in { animation: slideInRight 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) both; }
-      .shake { animation: shake 0.4s ease both; }
-      .pop-in { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both; }
-      .pulse { animation: pulse 0.6s ease infinite; }
-    `;
-    style.id = 'quiz-animations';
-    if (!document.getElementById('quiz-animations')) document.head.appendChild(style);
-  }, []);
 
   // Timer
   React.useEffect(() => {
@@ -2642,8 +3086,10 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, userId, onRoundCo
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       {/* Streak Banner */}
       {showStreak && (
-        <div className="pop-in" style={{ position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#FF9800', color: 'white', padding: '10px 24px', borderRadius: '24px', fontSize: '16px', fontWeight: 'bold', zIndex: 999, whiteSpace: 'nowrap', boxShadow: '0 4px 16px rgba(255,152,0,0.4)' }}>
-          🔥 {streak}x Streak!
+        <div style={{ position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)', zIndex: 999 }}>
+          <div className="bs-pop-in" style={{ backgroundColor: '#FF9800', color: 'white', padding: '10px 24px', borderRadius: '24px', fontSize: '16px', fontWeight: 'bold', fontFamily: fontBody, whiteSpace: 'nowrap', boxShadow: '0 4px 16px rgba(255,152,0,0.4)' }}>
+            🔥 {streak}x Streak!
+          </div>
         </div>
       )}
 
@@ -2670,7 +3116,7 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, userId, onRoundCo
         </div>
 
         {/* Question */}
-        <div className={animateQuestion ? 'slide-in' : ''}>
+        <div className={animateQuestion ? 'bs-slide-in' : ''}>
           <p style={{ fontSize: 'clamp(17px, 4vw, 22px)', color: colors.text, lineHeight: '1.6', marginBottom: '28px', fontFamily: fontDisplay, fontWeight: '700' }}>{q.question_text}</p>
         </div>
 
@@ -2690,7 +3136,13 @@ function QuizRound({ questions, roundNumber, totalRounds, bot, userId, onRoundCo
               <button
                 key={opt.key}
                 onClick={() => handleAnswer(opt.key)}
-                className={showResult && isUserSelected && !isCorrect && shakeAnswer ? 'shake' : showResult && isCorrect ? 'pulse' : ''}
+                className={
+                  showResult && isUserSelected && !isCorrect && shakeAnswer
+                    ? 'bs-shake bs-result-wrong'
+                    : showResult && isCorrect && (isUserSelected || isBotSelected)
+                      ? 'bs-result-correct'
+                      : ''
+                }
                 style={{
                   padding: '16px', backgroundColor: bg, border, color,
                   fontSize: 'clamp(14px, 3.5vw, 16px)', fontFamily: fontBody,
@@ -2936,7 +3388,7 @@ function QuestionReviewBlock({
         onClick={() => setOpen(o => !o)}
         style={{
           width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: open ? 'rgba(0,0,0,0.04)' : '#FFFFFF',
-          cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontFamily: 'Helvetica, Arial, sans-serif',
+          cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontFamily: fontBody,
         }}
       >
         <span style={{ fontSize: '13px', color: colors.text, fontWeight: '600' }}>{questionLabel}</span>
@@ -3146,12 +3598,12 @@ function IntermediateScore({
   userId: string;
 }) {
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 32px', fontFamily: 'Helvetica, Arial, sans-serif', overflowY: 'auto' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 32px', fontFamily: fontBody, overflowY: 'auto' }}>
       <div style={{ textAlign: 'center', maxWidth: '560px', width: '100%', margin: '0 auto' }}>
         <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}>
           <TabStatsIcon size={42} stroke={colors.primary} />
         </div>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>NACH {roundsPlayed} RUNDEN</h2>
+        <h2 style={{ ...pageHeading, marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>NACH {roundsPlayed} RUNDEN</h2>
         <p style={{ color: colors.muted, marginBottom: '24px', fontSize: '13px', letterSpacing: '1px' }}>ZWISCHENSTAND</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
           <div style={{ backgroundColor: '#FFFFFF', border: '2px solid rgba(0,0,0,0.08)', padding: '20px 12px', borderRadius: '8px' }}>
@@ -3176,7 +3628,7 @@ function IntermediateScore({
   );
 }
 
-function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
+function BotDuelGame({ duel, userId, onFinish, onRematch, onOpenBookRecommender }: { duel: any; userId: string; onFinish: () => void; onRematch?: () => void; onOpenBookRecommender?: () => void }) {
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentRound, setCurrentRound] = useState(1);
@@ -3193,6 +3645,8 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   const [playedGroupsCache, setPlayedGroupsCache] = useState<string[]>([]);
   const [botCategoryPicking, setBotCategoryPicking] = useState(false);
   const [botPickedSub, setBotPickedSub] = useState<any>(null);
+  const [bookPicks, setBookPicks] = useState<BookPick[]>([]);
+  const [bookPicksLoading, setBookPicksLoading] = useState(false);
   const botCategoryPickStarted = React.useRef(false);
 
   const opponentName = bots.find(b => b.level === duel.bot_level)?.name || 'Bot';
@@ -3253,7 +3707,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
 
     setRoundSubcategories(prev => {
       const updated = [...prev];
-      updated[updated.length - 1] = { ...sub, group_number: selectedGroup.group_number };
+      updated[updated.length - 1] = { ...sub, group_number: selectedGroup.group_number, group_id: selectedGroup.id };
       return updated;
     });
 
@@ -3322,6 +3776,13 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
         setQuestions([]);
       }
     } else {
+      const selectionsPlayed = [...roundUserSelectionsPlayed, selectedAnswers || []];
+      const roundsData = buildBotDuelRoundsData(
+        roundSubcategories,
+        newRoundUserAnswers,
+        newRoundBotAnswers,
+        selectionsPlayed,
+      );
       await supabase.from('scores').insert({
         user_id: userId,
         category_id: duel.category_id,
@@ -3334,10 +3795,33 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
         challenger_score: myTotal,
         opponent_score: botTotal,
         completed_at: new Date().toISOString(),
+        rounds_data: roundsData,
       }).eq('id', duel.id);
       setDone(true);
     }
   };
+
+  useEffect(() => {
+    if (!done) return;
+    let cancelled = false;
+    (async () => {
+      setBookPicksLoading(true);
+      const duelRounds = roundUserAnswers.map((userAnswers, i) => ({
+        questions: roundQuestionsPlayed[i] || [],
+        userAnswers: userAnswers || [],
+      }));
+      try {
+        const picks = await getPersonalizedBookPicks(userId, duelRounds, 2);
+        if (!cancelled) setBookPicks(picks);
+      } catch (err) {
+        console.warn('Book picks:', err);
+        if (!cancelled) setBookPicks([]);
+      }
+      if (!cancelled) setBookPicksLoading(false);
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done, userId]);
 
   const handleIntermediateContinue = () => {
     setCurrentRound(r => r + 1);
@@ -3364,10 +3848,10 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     }));
 
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 40px', fontFamily: 'Helvetica, Arial, sans-serif', overflowY: 'auto' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 40px', fontFamily: fontBody, overflowY: 'auto' }}>
         <div style={{ textAlign: 'center', maxWidth: '560px', width: '100%', margin: '0 auto' }}>
           <div style={{ fontSize: '52px', marginBottom: '16px' }}>{won ? '🏆' : draw ? '🤝' : '📚'}</div>
-          <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
+          <h2 style={{ ...pageHeading, marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
           <p style={{ color: colors.muted, marginBottom: '24px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
             <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${won || draw ? colors.primary : 'rgba(0,0,0,0.12)'}`, padding: '20px 12px', borderRadius: '8px' }}>
@@ -3383,10 +3867,15 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
               <div style={{ fontSize: '12px', color: colors.muted }}>von {totalQ} richtig</div>
             </div>
           </div>
+          <DuelBookRecommendations
+            picks={bookPicks}
+            loading={bookPicksLoading}
+            onViewAll={onOpenBookRecommender}
+          />
           <div style={{ textAlign: 'left' }}>
             <BotDuelRoundsOverview rounds={finalSummaries} opponentShort={oppShort} userId={userId} />
           </div>
-          <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
+          <DuelFinishActions onRematch={onRematch} onFinish={onFinish} rematchLabel="Revanche (gleicher Bot)" />
         </div>
       </div>
     );
@@ -3425,14 +3914,14 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
       if (pickOptionsLoading && eligibleBotSubs.length === 0) {
         return (
           <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+            <p style={{ color: colors.muted, fontFamily: fontBody, letterSpacing: '2px' }}>LADEN...</p>
           </div>
         );
       }
       if (!pickOptionsLoading && eligibleBotSubs.length === 0) {
         return (
           <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
-            <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', marginBottom: '24px', textAlign: 'center' }}>Kein Thema verfügbar für die Bot-Runde.</p>
+            <p style={{ color: colors.muted, fontFamily: fontBody, marginBottom: '24px', textAlign: 'center' }}>Kein Thema verfügbar für die Bot-Runde.</p>
             <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück zum Dashboard</button>
           </div>
         );
@@ -3448,7 +3937,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
         );
       }
       return (
-        <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+        <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fontBody }}>
           <p style={{ color: colors.muted, letterSpacing: '2px' }}>{shortBotDisplayName(opponentName).toUpperCase()} WÄHLT...</p>
         </div>
       );
@@ -3456,24 +3945,24 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
     if (pickOptionsLoading) {
       return (
         <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+          <p style={{ color: colors.muted, fontFamily: fontBody, letterSpacing: '2px' }}>LADEN...</p>
         </div>
       );
     }
     if (userPickOptions.length === 0) {
       return (
         <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
-          <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', marginBottom: '24px', textAlign: 'center' }}>Keine passenden Themen für diese Runde.<br />Es braucht Subkategorien mit Fragengruppen, die du noch nicht gespielt hast.</p>
+          <p style={{ color: colors.muted, fontFamily: fontBody, marginBottom: '24px', textAlign: 'center' }}>Keine passenden Themen für diese Runde.<br />Es braucht Subkategorien mit Fragengruppen, die du noch nicht gespielt hast.</p>
           <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück zum Dashboard</button>
         </div>
       );
     }
     const opts = userPickOptions.slice(0, 4);
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
         <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
           <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px', marginTop: '20px' }}>RUNDE {currentRound} VON {TOTAL_ROUNDS}</p>
-          <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Du wählst das Thema</h2>
+          <h2 style={{ ...pageHeading, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 500 }}>Du wählst das Thema</h2>
           <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Für diese Runde — wähle eine von vier Themen</p>
           <div style={{ display: 'grid', gridTemplateColumns: opts.length >= 4 ? '1fr 1fr' : opts.length === 3 ? '1fr 1fr' : '1fr', gap: '12px' }}>
             {opts.map((sub, idx) => (
@@ -3490,20 +3979,20 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+      <p style={{ color: colors.muted, fontFamily: fontBody, letterSpacing: '2px' }}>LADEN...</p>
     </div>
   );
 
   if (questions.length < QUESTIONS_PER_ROUND) return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '20px' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', marginBottom: '24px', textAlign: 'center' }}>Zu wenige Fragen in "{roundSubcategories[currentRound - 1]?.name}".<br />Bitte zuerst Fragen hinzufügen und Gruppen erstellen.</p>
+      <p style={{ color: colors.muted, fontFamily: fontBody, marginBottom: '24px', textAlign: 'center' }}>Zu wenige Fragen in "{roundSubcategories[currentRound - 1]?.name}".<br />Bitte zuerst Fragen hinzufügen und Gruppen erstellen.</p>
       <button style={{ ...btnSecondary, width: 'auto', padding: '12px 32px' }} onClick={onFinish}>Zurück zum Dashboard</button>
     </div>
   );
 
   return (
     <div>
-      <div style={{ backgroundColor: colors.light, padding: '8px 16px', fontFamily: 'Helvetica, Arial, sans-serif', textAlign: 'center' }}>
+      <div style={{ backgroundColor: colors.light, padding: '8px 16px', fontFamily: fontBody, textAlign: 'center' }}>
         <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>
           {roundSubcategories[currentRound - 1]?.name.toUpperCase()}
           {roundSubcategories[currentRound - 1]?.group_number && ` · GRUPPE ${roundSubcategories[currentRound - 1].group_number}`}
@@ -3516,7 +4005,7 @@ function BotDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, on
   );
 }
 
-function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, onFinish: () => void }) {
+function UserDuelGame({ duel, userId, onFinish, onRematch }: { duel: any; userId: string; onFinish: () => void; onRematch?: () => void }) {
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<'overview' | 'selectSub' | 'playing' | 'waiting' | 'done'>('overview');
   const [availableSubs, setAvailableSubs] = useState<any[]>([]);
@@ -3722,20 +4211,20 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
 
     if (newStatus !== 'completed' && newTurnUserId === opponentId) {
       const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
-      await supabase.from('notifications').insert({
+      await createNotification({
         user_id: opponentId,
         type: 'duel_turn',
-        title: 'Du bist dran!',
-        message: `${myProfile?.username} hat eine Runde beendet - du bist jetzt am Zug`,
+        title: 'Du bist am Zug',
+        message: `${myProfile?.username} hat eine Runde beendet — du bist jetzt dran.`,
         related_id: duelData.id,
       });
     } else if (newStatus === 'completed') {
       const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
-      await supabase.from('notifications').insert({
+      await createNotification({
         user_id: opponentId,
         type: 'duel_completed',
         title: 'Duell beendet',
-        message: `Das Duell gegen ${myProfile?.username} ist fertig - schau dir das Ergebnis an!`,
+        message: `Das Duell gegen ${myProfile?.username} ist fertig — schau dir das Ergebnis an!`,
         related_id: duelData.id,
       });
     }
@@ -3762,7 +4251,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+      <p style={{ color: colors.muted, fontFamily: fontBody, letterSpacing: '2px' }}>LADEN...</p>
     </div>
   );
 
@@ -3777,10 +4266,10 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     const oppName = opponentProfile?.username || 'Gegner';
 
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 40px', fontFamily: 'Helvetica, Arial, sans-serif', overflowY: 'auto' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, padding: '20px 16px 40px', fontFamily: fontBody, overflowY: 'auto' }}>
         <div style={{ maxWidth: '560px', margin: '0 auto', textAlign: 'center', paddingTop: '24px' }}>
           <div style={{ fontSize: '52px', marginBottom: '16px' }}>{won ? '🏆' : draw ? '🤝' : '📚'}</div>
-          <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
+          <h2 style={{ ...pageHeading, marginBottom: '8px', fontSize: 'clamp(18px, 5vw, 24px)' }}>{won ? 'GEWONNEN!' : draw ? 'UNENTSCHIEDEN' : 'VERLOREN'}</h2>
           <p style={{ color: colors.muted, marginBottom: '24px', fontSize: '13px', letterSpacing: '1px' }}>4 RUNDEN ABGESCHLOSSEN</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
             <div style={{ backgroundColor: '#FFFFFF', border: `2px solid ${won || draw ? colors.primary : 'rgba(0,0,0,0.12)'}`, padding: '20px 12px', borderRadius: '8px' }}>
@@ -3814,7 +4303,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
               <p style={{ color: colors.muted, fontSize: '14px', textAlign: 'center', marginBottom: '24px' }}>Runden und Fragen werden geladen…</p>
             )}
           </div>
-          <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
+          <DuelFinishActions onRematch={onRematch} onFinish={onFinish} rematchLabel="Revanche" />
         </div>
       </div>
     );
@@ -3822,10 +4311,10 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
 
   if (phase === 'waiting') {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: fontBody }}>
         <div style={{ textAlign: 'center', maxWidth: '500px' }}>
           <div style={{ fontSize: '52px', marginBottom: '16px' }}>⏳</div>
-          <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '12px', fontSize: 'clamp(18px, 5vw, 24px)' }}>WARTEN AUF GEGNER</h2>
+          <h2 style={{ ...pageHeading, marginBottom: '12px', fontSize: 'clamp(18px, 5vw, 24px)' }}>WARTEN AUF GEGNER</h2>
           <p style={{ color: colors.text, fontSize: '15px', marginBottom: '24px' }}>{opponentProfile?.username} ist jetzt am Zug</p>
           <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '32px' }}>Du bekommst eine Benachrichtigung sobald du wieder dran bist.</p>
           <button style={btnPrimary} onClick={onFinish}>Zurück zum Dashboard</button>
@@ -3838,7 +4327,7 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
     const roundNum = currentRoundInfo.round;
     return (
       <div>
-        <div style={{ backgroundColor: colors.light, padding: '8px 16px', fontFamily: 'Helvetica, Arial, sans-serif', textAlign: 'center' }}>
+        <div style={{ backgroundColor: colors.light, padding: '8px 16px', fontFamily: fontBody, textAlign: 'center' }}>
           <span style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px' }}>
             {currentRoundInfo.subcategory_name.toUpperCase()} · GRUPPE {currentRoundInfo.group_number}
           </span>
@@ -3854,11 +4343,11 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
 
   if (needsToPlayExistingRound) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
         <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-          <button onClick={onFinish} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+          <button onClick={onFinish} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
           <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px' }}>RUNDE {lastRound.round} VON {TOTAL_ROUNDS}</p>
-          <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>{opponentProfile?.username} hat gewählt</h2>
+          <h2 style={{ ...pageHeading, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 500 }}>{opponentProfile?.username} hat gewählt</h2>
           <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Thema: {lastRound.subcategory_name} · Gruppe {lastRound.group_number}</p>
           <button style={btnPrimary} onClick={playExistingRound}>Runde spielen</button>
         </div>
@@ -3875,11 +4364,11 @@ function UserDuelGame({ duel, userId, onFinish }: { duel: any, userId: string, o
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onFinish} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <button onClick={onFinish} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
         <p style={{ color: colors.muted, fontSize: '12px', letterSpacing: '1px', marginBottom: '6px' }}>RUNDE {nextRound} VON {TOTAL_ROUNDS}</p>
-        <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Du wählst das Thema</h2>
+        <h2 style={{ ...pageHeading, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 500 }}>Du wählst das Thema</h2>
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>Gegen {opponentProfile?.username}</p>
         <div style={{ display: 'grid', gridTemplateColumns: availableSubs.length >= 4 ? '1fr 1fr' : availableSubs.length === 3 ? '1fr 1fr' : '1fr', gap: '12px' }}>
           {availableSubs.slice(0, 4).map((sub, idx) => (
@@ -3921,10 +4410,10 @@ function DuelsList({ userId, onOpenDuel, onBack, onNewUserDuel }: { userId: stri
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.primary, letterSpacing: '2px', marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>USER-DUELLE</h2>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ ...pageHeading, marginBottom: '24px', fontSize: 'clamp(18px, 5vw, 24px)' }}>USER-DUELLE</h2>
         
         <button style={btnPrimary} onClick={onNewUserDuel}>+ Neues Duell starten</button>
         
@@ -4014,11 +4503,11 @@ function UserDuelCategorySelect({ opponent, userId, onBack, onStart }: { opponen
     }
 
     const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', userId).single();
-    await supabase.from('notifications').insert({
+    await createNotification({
       user_id: opponent.id,
       type: 'duel_challenge',
-      title: 'Neue Duell-Herausforderung',
-      message: `${myProfile?.username} hat dich zum Duell herausgefordert in ${category.name}`,
+      title: 'Freund hat dich herausgefordert',
+      message: `${myProfile?.username} hat dich zum Duell in «${category.name}» herausgefordert.`,
       related_id: data.id,
     });
 
@@ -4033,15 +4522,15 @@ function UserDuelCategorySelect({ opponent, userId, onBack, onStart }: { opponen
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: colors.muted, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px' }}>LADEN...</p>
+      <p style={{ color: colors.muted, fontFamily: fontBody, letterSpacing: '2px' }}>LADEN...</p>
     </div>
   );
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.text, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 'normal' }}>Duell gegen {opponent.username}</h2>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ ...pageHeading, fontSize: 'clamp(18px, 4vw, 22px)', marginBottom: '6px', fontWeight: 500 }}>Duell gegen {opponent.username}</h2>
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '20px' }}>Wähle eine Kategorie</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {categories.map(cat => (
@@ -4065,7 +4554,79 @@ interface BeforeInstallPromptEventStub extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-function Profile({ userId, onChallenge, onLogout }: { userId: string, onChallenge: (opp: any) => void, onLogout: () => void }) {
+function PushNotificationSettings({ userId }: { userId: string }) {
+  const [supported, setSupported] = useState(false);
+  const [subscribed, setSubscribed] = useState(false);
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const refresh = async () => {
+    setSupported(isPushSupported());
+    setPermission(await getPushPermission());
+    setSubscribed(await isPushSubscribed());
+  };
+
+  useEffect(() => {
+    refresh();
+  }, [userId]);
+
+  const handleEnable = async () => {
+    setBusy(true);
+    setMsg('');
+    const result = await subscribeToPush(userId);
+    await refresh();
+    setBusy(false);
+    if (result.ok) {
+      setMsg('Push-Benachrichtigungen sind aktiv.');
+    } else if (result.reason === 'denied') {
+      setMsg('Benachrichtigungen wurden blockiert. In den Browser-Einstellungen erlauben.');
+    } else if (result.reason === 'no_vapid') {
+      setMsg('Push ist noch nicht konfiguriert (VAPID-Schlüssel fehlt).');
+    } else if (result.reason === 'table_missing') {
+      setMsg('Bitte zuerst push_subscriptions.sql in Supabase ausführen.');
+    } else {
+      setMsg('Aktivierung fehlgeschlagen. Bitte App neu laden und erneut versuchen.');
+    }
+  };
+
+  const handleDisable = async () => {
+    setBusy(true);
+    await unsubscribeFromPush(userId);
+    await refresh();
+    setBusy(false);
+    setMsg('Push-Benachrichtigungen deaktiviert.');
+  };
+
+  if (!supported) return null;
+
+  return (
+    <div style={{ marginBottom: '24px' }}>
+      <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '10px' }}>PUSH-BENACHRICHTIGUNGEN</div>
+      <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '16px' }}>
+        <p style={{ fontSize: '13px', color: colors.text, lineHeight: 1.5, margin: '0 0 14px' }}>
+          «Du bist am Zug» und «Freund hat dich herausgefordert» — auch wenn die App geschlossen ist (installierte PWA empfohlen).
+        </p>
+        <p style={{ fontSize: '12px', color: colors.muted, margin: '0 0 14px' }}>
+          Status: {subscribed && permission === 'granted' ? 'Aktiv' : permission === 'denied' ? 'Blockiert' : 'Nicht aktiv'}
+        </p>
+        {subscribed && permission === 'granted' ? (
+          <button type="button" onClick={handleDisable} disabled={busy} style={btnSecondary}>
+            Deaktivieren
+          </button>
+        ) : (
+          <button type="button" onClick={handleEnable} disabled={busy} style={btnPrimary}>
+            {busy ? 'Wird aktiviert…' : 'Push aktivieren'}
+          </button>
+        )}
+        {msg ? <p style={{ fontSize: '13px', color: colors.muted, marginTop: '12px', marginBottom: 0 }}>{msg}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function Profile({ userId, onChallenge, onLogout }: { userId: string; onChallenge: (opp: any) => void; onLogout: () => void }) {
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<any>(null);
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
@@ -4168,7 +4729,12 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
     if (existing && existing.length > 0) { setSearchMsg('Anfrage bereits vorhanden oder bereits befreundet.'); return; }
     await supabase.from('friendships').insert({ requester_id: userId, addressee_id: searchResult.id, status: 'pending' });
     const { data: me } = await supabase.from('profiles').select('username').eq('id', userId).single();
-    await supabase.from('notifications').insert({ user_id: searchResult.id, type: 'friend_request', title: 'Neue Freundschaftsanfrage', message: `${me?.username} möchte mit dir befreundet sein` });
+    await createNotification({
+      user_id: searchResult.id,
+      type: 'friend_request',
+      title: 'Neue Freundschaftsanfrage',
+      message: `${me?.username} möchte mit dir befreundet sein`,
+    });
     setSearchMsg('✅ Anfrage gesendet!');
     setSearchResult(null);
     setSearchUsername('');
@@ -4248,11 +4814,14 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
         </div>
       )}
 
+      <PushNotificationSettings userId={userId} />
+
+
       {/* Spieler suchen */}
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '10px' }}>SPIELER SUCHEN</div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Username" value={searchUsername} onChange={e => setSearchUsername(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
+          <input ref={searchInputRef} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} placeholder="Username" value={searchUsername} onChange={e => setSearchUsername(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
           <button onClick={handleSearch} disabled={searching} style={{ ...btnPrimary, width: 'auto', padding: '0 20px', marginBottom: 0, fontSize: '13px' }}>Suchen</button>
         </div>
         {searchMsg && <div style={{ fontSize: '13px', color: searchMsg.startsWith('✅') ? '#2D6A4F' : '#A68A64', marginTop: '8px' }}>{searchMsg}</div>}
@@ -4260,8 +4829,8 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
           <div style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '15px', color: colors.text }}>{searchResult.username}</span>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={sendFriendRequest} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Freund</button>
-              <button onClick={() => onChallenge(searchResult)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.primary, border: `1px solid ${colors.primary}`, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Duell</button>
+              <button onClick={sendFriendRequest} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: fontBody }}>Freund</button>
+              <button onClick={() => onChallenge(searchResult)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.primary, border: `1px solid ${colors.primary}`, borderRadius: '2px', cursor: 'pointer', fontFamily: fontBody }}>Duell</button>
             </div>
           </div>
         )}
@@ -4275,8 +4844,8 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
             <div key={req.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '14px', color: colors.text }}>{req.requester.username}</span>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => acceptRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#2D6A4F', color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Annehmen</button>
-                <button onClick={() => rejectRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.muted, border: `1px solid ${colors.muted}`, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Ablehnen</button>
+                <button onClick={() => acceptRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: '#2D6A4F', color: 'white', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: fontBody }}>Annehmen</button>
+                <button onClick={() => rejectRequest(req.id)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.muted, border: `1px solid ${colors.muted}`, borderRadius: '2px', cursor: 'pointer', fontFamily: fontBody }}>Ablehnen</button>
               </div>
             </div>
           ))}
@@ -4287,13 +4856,22 @@ function Profile({ userId, onChallenge, onLogout }: { userId: string, onChalleng
       <div>
         <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '10px' }}>FREUNDE ({friends.length})</div>
         {friends.length === 0 ? (
-          <p style={{ color: colors.muted, fontSize: '14px' }}>Noch keine Freunde</p>
+          <EmptyState
+            icon="👥"
+            title="Noch keine Freunde"
+            description="Suche Spieler per Username und sende eine Freundschaftsanfrage — dann kannst du sie direkt herausfordern."
+            actionLabel="Spieler suchen"
+            onAction={() => {
+              searchInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              searchInputRef.current?.focus();
+            }}
+          />
         ) : friends.map(f => {
           const friend = f.requester.id === userId ? f.addressee : f.requester;
           return (
             <div key={f.id} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '14px 16px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '14px', color: colors.text }}>{friend.username}</span>
-              <button onClick={() => onChallenge(friend)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.primary, border: `1px solid ${colors.primary}`, borderRadius: '2px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif' }}>Duell</button>
+              <button onClick={() => onChallenge(friend)} style={{ fontSize: '12px', padding: '6px 12px', backgroundColor: 'transparent', color: colors.primary, border: `1px solid ${colors.primary}`, borderRadius: '2px', cursor: 'pointer', fontFamily: fontBody }}>Duell</button>
             </div>
           );
         })}
@@ -4323,6 +4901,7 @@ function TotalQuestionsCount() {
 
 function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   const [tab, setTab] = useState<'home' | 'stats' | 'profile' | 'admin'>('home');
+  const [statsInitialTab, setStatsInitialTab] = useState<'stats' | 'books' | 'leaderboard' | 'myduels' | null>(null);
   const [subView, setSubView] = useState<'none' | 'selectCategoryBot' | 'selectOpponentBot' | 'botDuel' | 'userDuel' | 'userDuelCategory' | 'notifications'>('none');
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
@@ -4348,11 +4927,35 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     setOnlineUsers(data || []);
   };
 
+  const openDuelFromPush = async (duelId: string) => {
+    const { data } = await supabase
+      .from('duels')
+      .select(`*, challenger:profiles!duels_challenger_id_fkey(username), opponent:profiles!duels_opponent_id_fkey(username), categories(name)`)
+      .eq('id', duelId)
+      .maybeSingle();
+    if (data && data.status !== 'completed') {
+      setActiveDuel(data);
+      setSubView('userDuel');
+      setTab('home');
+    }
+  };
+
   useEffect(() => {
     supabase.from('categories').select('*').then(({ data }) => setCategories(data || []));
     supabase.from('profiles').select('is_admin').eq('id', user.id).single().then(({ data }) => setIsAdmin(data?.is_admin || false));
     loadActiveDuels();
     loadOnlineUsers();
+
+    const params = new URLSearchParams(window.location.search);
+    const duelId = params.get('duel');
+    if (duelId) {
+      openDuelFromPush(duelId);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('notifications') === '1') {
+      setSubView('notifications');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     const interval = setInterval(() => { loadActiveDuels(); }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4361,24 +4964,94 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   const startBotDuel = async (bot: any) => {
     const { data } = await supabase.from('duels').insert({
       challenger_id: user.id, opponent_is_bot: true, bot_level: bot.level,
-      category_id: selectedCategory.id, status: 'challenger_turn',
+      category_id: selectedCategory.id, status: 'challenger_turn', rounds_data: [],
     }).select().single();
     if (data) { setActiveDuel(data); setSubView('botDuel'); }
   };
 
   const goHome = () => { setSubView('none'); setActiveDuel(null); loadActiveDuels(); };
 
+  const rematchBotDuel = async (categoryId: string, botLevel: number) => {
+    const { data } = await supabase.from('duels').insert({
+      challenger_id: user.id,
+      opponent_is_bot: true,
+      bot_level: botLevel,
+      category_id: categoryId,
+      status: 'challenger_turn',
+      rounds_data: [],
+    }).select().single();
+    if (data) {
+      setActiveDuel(data);
+      setSubView('botDuel');
+    }
+  };
+
+  const rematchUserDuel = async (opponentId: string, categoryId: string) => {
+    const { data, error } = await supabase.from('duels').insert({
+      challenger_id: user.id,
+      opponent_id: opponentId,
+      opponent_is_bot: false,
+      category_id: categoryId,
+      status: 'challenger_turn',
+      current_turn_user_id: user.id,
+      rounds_data: [],
+    }).select(`*, challenger:profiles!duels_challenger_id_fkey(username), opponent:profiles!duels_opponent_id_fkey(username), categories(name)`).single();
+
+    if (error || !data) {
+      alert('Revanche konnte nicht gestartet werden.');
+      return;
+    }
+
+    const { data: myProfile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
+    await createNotification({
+      user_id: opponentId,
+      type: 'duel_challenge',
+      title: 'Freund hat dich herausgefordert',
+      message: `${myProfile?.username} fordert dich zur Revanche in «${data.categories?.name || 'einem Thema'}» heraus.`,
+      related_id: data.id,
+    });
+
+    setChallengingUser(null);
+    setActiveDuel(data);
+    setSubView('userDuel');
+  };
+
   // Full-screen subviews
-  if (subView === 'botDuel' && activeDuel) return <BotDuelGame duel={activeDuel} userId={user.id} onFinish={goHome} />;
-  if (subView === 'userDuel' && activeDuel) return <UserDuelGame duel={activeDuel} userId={user.id} onFinish={goHome} />;
+  if (subView === 'botDuel' && activeDuel) {
+    return (
+      <BotDuelGame
+        duel={activeDuel}
+        userId={user.id}
+        onFinish={goHome}
+        onRematch={() => rematchBotDuel(activeDuel.category_id, activeDuel.bot_level)}
+        onOpenBookRecommender={() => {
+          setStatsInitialTab('books');
+          setTab('stats');
+          setSubView('none');
+          setActiveDuel(null);
+        }}
+      />
+    );
+  }
+  if (subView === 'userDuel' && activeDuel) {
+    const opponentId = activeDuel.challenger_id === user.id ? activeDuel.opponent_id : activeDuel.challenger_id;
+    return (
+      <UserDuelGame
+        duel={activeDuel}
+        userId={user.id}
+        onFinish={goHome}
+        onRematch={() => rematchUserDuel(opponentId, activeDuel.category_id)}
+      />
+    );
+  }
   if (subView === 'notifications') return <Notifications userId={user.id} onBack={() => setSubView('none')} />;
   if (subView === 'userDuelCategory' && challengingUser) return <UserDuelCategorySelect opponent={challengingUser} userId={user.id} onBack={() => setSubView('none')} onStart={(duel) => { setChallengingUser(null); setActiveDuel(duel); setSubView('userDuel'); }} />;
 
   if (subView === 'selectOpponentBot') return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={() => setSubView('selectCategoryBot')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '6px', fontWeight: 'normal' }}>Wähle einen Bot</h2>
+        <button onClick={() => setSubView('selectCategoryBot')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ ...pageHeading, fontSize: '20px', marginBottom: '6px', fontWeight: 500 }}>Wähle einen Bot</h2>
         <p style={{ color: colors.muted, fontSize: '13px', marginBottom: '24px' }}>{selectedCategory?.name}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {bots.map(bot => (
@@ -4396,10 +5069,10 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   );
 
   if (subView === 'selectCategoryBot') return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={() => setSubView('none')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
-        <h2 style={{ color: colors.text, fontSize: '20px', marginBottom: '24px', fontWeight: 'normal' }}>Wähle eine Kategorie</h2>
+        <button onClick={() => setSubView('none')} style={{ background: 'none', border: 'none', color: colors.muted, cursor: 'pointer', fontFamily: fontBody, fontSize: '14px', marginBottom: '24px', padding: '8px 0' }}>← Zurück</button>
+        <h2 style={{ ...pageHeading, fontSize: '20px', marginBottom: '24px', fontWeight: 500 }}>Wähle eine Kategorie</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {categories.map(cat => (
             <div key={cat.id} onClick={() => { setSelectedCategory(cat); setSubView('selectOpponentBot'); }} style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', padding: '20px 16px', cursor: 'pointer', borderRadius: '8px' }}>
@@ -4414,10 +5087,21 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   const myTurnDuels = myActiveDuels.filter(d => d.current_turn_user_id === user.id);
   const waitingDuels = myActiveDuels.filter(d => d.current_turn_user_id !== user.id);
 
+  const openBotDuelPicker = () => {
+    setTab('home');
+    setSubView('selectCategoryBot');
+  };
+
+  const openUserDuelPicker = () => {
+    setTab('home');
+    setChallengingUser(null);
+    setSubView('userDuelCategory');
+  };
+
   const NAV_HEIGHT = 64;
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif', paddingBottom: `${NAV_HEIGHT}px` }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody, paddingBottom: `${NAV_HEIGHT}px` }}>
 
       {/* Header */}
       <div style={{ backgroundColor: '#1A1A1A', padding: '14px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
@@ -4434,16 +5118,22 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
 
         {/* HOME TAB */}
         {tab === 'home' && (
-          <div style={{ padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+          <div key="home" className="bs-tab-enter" style={{ padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
             <section>
               <div style={{ fontSize: '11px', color: colors.muted, letterSpacing: '2px', marginBottom: '12px' }}>
                 AKTUELLE DUELLE ({myTurnDuels.length})
               </div>
               {myActiveDuels.length === 0 ? (
-                <div style={{ backgroundColor: '#FFFFFF', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '20px', textAlign: 'center' }}>
-                  <p style={{ color: 'rgba(0,0,0,0.4)', fontSize: '14px', margin: 0 }}>Keine laufenden Duelle</p>
-                </div>
+                <EmptyState
+                  icon="⚔️"
+                  title="Keine laufenden Duelle"
+                  description="Starte ein Bot-Duell oder fordere einen Spieler heraus — laufende Partien erscheinen hier."
+                  actionLabel="Bot-Duell starten"
+                  onAction={openBotDuelPicker}
+                  secondaryLabel="Neues Duell"
+                  onSecondary={openUserDuelPicker}
+                />
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {myTurnDuels.map(d => {
@@ -4496,7 +5186,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
                     {onlineUsers.slice(0, 5).map(u => (
                       <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
                         <span style={{ fontSize: '14px', color: '#1A1A1A' }}>{u.username}</span>
-                        <button onClick={() => { setChallengingUser(u); setSubView('userDuelCategory'); }} style={{ fontSize: '11px', padding: '4px 10px', backgroundColor: 'transparent', border: '0.5px solid #1A1A1A', color: '#1A1A1A', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '1px' }}>HERAUSFORDERN</button>
+                        <button onClick={() => { setChallengingUser(u); setSubView('userDuelCategory'); }} style={{ fontSize: '11px', padding: '4px 10px', backgroundColor: 'transparent', border: '0.5px solid #1A1A1A', color: '#1A1A1A', borderRadius: '8px', cursor: 'pointer', fontFamily: fontBody, letterSpacing: '1px' }}>HERAUSFORDERN</button>
                       </div>
                     ))}
                   </div>
@@ -4508,18 +5198,28 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
         )}
 
         {/* STATS TAB */}
-        {tab === 'stats' && <Highscores onBack={() => setTab('home')} userId={user.id} />}
+        {tab === 'stats' && (
+          <Highscores
+            onBack={() => setTab('home')}
+            userId={user.id}
+            onStartBotDuel={openBotDuelPicker}
+            initialTab={statsInitialTab || undefined}
+            onInitialTabConsumed={() => setStatsInitialTab(null)}
+          />
+        )}
 
         {/* ADMIN TAB */}
         {tab === 'admin' && isAdmin && <AdminImport onBack={() => setTab('home')} />}
 
         {/* PROFILE TAB */}
         {tab === 'profile' && (
-          <Profile
-            userId={user.id}
-            onChallenge={(opp) => { setChallengingUser(opp); setSubView('userDuelCategory'); }}
-            onLogout={onLogout}
-          />
+          <div key="profile" className="bs-tab-enter">
+            <Profile
+              userId={user.id}
+              onChallenge={(opp) => { setChallengingUser(opp); setSubView('userDuelCategory'); }}
+              onLogout={onLogout}
+            />
+          </div>
         )}
       </div>
 
@@ -4552,7 +5252,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
             </>
           ) }] : []),
         ] as const).map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); setSubView('none'); }} style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', fontFamily: 'Helvetica, Arial, sans-serif' }}>
+          <button key={t.id} onClick={() => { setTab(t.id); setSubView('none'); }} style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', fontFamily: fontBody }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tab === t.id ? '#1A1A1A' : 'rgba(0,0,0,0.25)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               {t.svg}
             </svg>
@@ -4607,7 +5307,7 @@ function App() {
   if (mode === 'login') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
-        <h2 style={{ textAlign: 'center', color: colors.primary, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px', marginBottom: '32px' }}>ANMELDEN</h2>
+        <h2 style={{ textAlign: 'center', ...pageHeading, marginBottom: '32px' }}>ANMELDEN</h2>
         {error && <p style={{ color: error.includes('erfolgreich') ? 'green' : 'red', textAlign: 'center', marginBottom: '16px', fontSize: '14px' }}>{error}</p>}
         <input style={inputStyle} placeholder="E-Mail" value={email} onChange={e => setEmail(e.target.value)} type="email" />
         <input style={inputStyle} placeholder="Passwort" value={password} onChange={e => setPassword(e.target.value)} type="password" />
@@ -4621,7 +5321,7 @@ function App() {
   if (mode === 'register') return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
-        <h2 style={{ textAlign: 'center', color: colors.primary, fontFamily: 'Helvetica, Arial, sans-serif', letterSpacing: '2px', marginBottom: '32px' }}>REGISTRIEREN</h2>
+        <h2 style={{ textAlign: 'center', ...pageHeading, marginBottom: '32px' }}>REGISTRIEREN</h2>
         {error && <p style={{ color: 'red', textAlign: 'center', marginBottom: '16px', fontSize: '14px' }}>{error}</p>}
         <input style={inputStyle} placeholder="Benutzername" value={username} onChange={e => setUsername(e.target.value)} />
         <input style={inputStyle} placeholder="E-Mail" value={email} onChange={e => setEmail(e.target.value)} type="email" />
@@ -4634,7 +5334,7 @@ function App() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: 'Helvetica, Arial, sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
         <div style={{ fontSize: '48px', marginBottom: '8px' }}>📚</div>
         <h1 style={{ fontSize: 'clamp(36px, 10vw, 52px)', fontWeight: '900', color: colors.primary, margin: '0 0 8px 0', letterSpacing: '2px', fontFamily: fontDisplay }}>BOOKSMART</h1>
