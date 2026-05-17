@@ -665,7 +665,7 @@ function collectWrongBookCountsFromDuelRounds(rounds: { questions: any[]; userAn
 async function getPersonalizedBookPicks(
   userId: string,
   duelRounds: { questions: any[]; userAnswers: boolean[] }[],
-  limit = 2,
+  limit = 1,
 ): Promise<BookPick[]> {
   const wrongByBook = collectWrongBookCountsFromDuelRounds(duelRounds);
   const orderedIds = Array.from(wrongByBook.entries())
@@ -743,7 +743,7 @@ function DuelBookRecommendations({
   return (
     <div style={{ marginBottom: '24px', textAlign: 'left' }}>
       <h3 style={{ fontSize: '14px', color: colors.text, letterSpacing: '1px', marginBottom: '4px', fontWeight: 'bold' }}>
-        Diese {picks.length} Bücher solltest du lesen
+        Dieses Buch könntest du lesen
       </h3>
       <p style={{ fontSize: '12px', color: colors.muted, marginBottom: '14px', lineHeight: 1.45 }}>
         Personalisiert aus deinen Fehlern in diesem Duell und deinem Book Recommender.
@@ -3811,7 +3811,7 @@ function BotDuelGame({ duel, userId, onFinish, onRematch, onOpenBookRecommender 
         userAnswers: userAnswers || [],
       }));
       try {
-        const picks = await getPersonalizedBookPicks(userId, duelRounds, 2);
+        const picks = await getPersonalizedBookPicks(userId, duelRounds, 1);
         if (!cancelled) setBookPicks(picks);
       } catch (err) {
         console.warn('Book picks:', err);

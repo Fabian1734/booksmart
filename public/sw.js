@@ -1,4 +1,4 @@
-const CACHE_NAME = 'booksmart-v2';
+const CACHE_NAME = 'booksmart-v3';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => {
