@@ -196,7 +196,7 @@ function TabStatsIcon({ size = 48, stroke = colors.primary }: { size?: number; s
 
 const QUESTIONS_PER_ROUND = 3;
 const TOTAL_ROUNDS = 4;
-const QUESTION_TIME_SECONDS = 21;
+const QUESTION_TIME_SECONDS = 30;
 
 function getBotAnswer(optionKeys: string[], correctAnswer: string, accuracy: number): string {
   if (Math.random() < accuracy) return correctAnswer;
@@ -4972,7 +4972,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   const goHome = () => { setSubView('none'); setActiveDuel(null); loadActiveDuels(); };
 
   const rematchBotDuel = async (categoryId: string, botLevel: number) => {
-    const { data } = await supabase.from('duels').insert({
+    const { data, error } = await supabase.from('duels').insert({
       challenger_id: user.id,
       opponent_is_bot: true,
       bot_level: botLevel,
@@ -4980,10 +4980,14 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       status: 'challenger_turn',
       rounds_data: [],
     }).select().single();
-    if (data) {
-      setActiveDuel(data);
-      setSubView('botDuel');
+    if (error || !data) {
+      alert('Revanche konnte nicht gestartet werden.');
+      return;
     }
+    const cat = categories.find(c => c.id === categoryId);
+    if (cat) setSelectedCategory(cat);
+    setActiveDuel(data);
+    setSubView('botDuel');
   };
 
   const rematchUserDuel = async (opponentId: string, categoryId: string) => {
@@ -5020,6 +5024,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
   if (subView === 'botDuel' && activeDuel) {
     return (
       <BotDuelGame
+        key={activeDuel.id}
         duel={activeDuel}
         userId={user.id}
         onFinish={goHome}
@@ -5037,6 +5042,7 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
     const opponentId = activeDuel.challenger_id === user.id ? activeDuel.opponent_id : activeDuel.challenger_id;
     return (
       <UserDuelGame
+        key={activeDuel.id}
         duel={activeDuel}
         userId={user.id}
         onFinish={goHome}
