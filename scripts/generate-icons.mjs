@@ -5,7 +5,9 @@ import sharp from 'sharp';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const publicDir = join(root, 'public');
-const svg = readFileSync(join(publicDir, 'icon.svg'));
+const sourcePath = join(publicDir, 'logo-source.png');
+
+const source = readFileSync(sourcePath);
 
 const sizes = [
   { name: 'logo512.png', size: 512 },
@@ -15,13 +17,15 @@ const sizes = [
 ];
 
 for (const { name, size } of sizes) {
-  await sharp(svg).resize(size, size).png().toFile(join(publicDir, name));
+  await sharp(source)
+    .resize(size, size, { fit: 'cover' })
+    .png()
+    .toFile(join(publicDir, name));
   console.log(`wrote ${name} (${size}x${size})`);
 }
 
-// Minimal ICO (16 + 32) for legacy browsers
-const png16 = await sharp(svg).resize(16, 16).png().toBuffer();
-const png32 = await sharp(svg).resize(32, 32).png().toBuffer();
+const png16 = await sharp(source).resize(16, 16, { fit: 'cover' }).png().toBuffer();
+const png32 = await sharp(source).resize(32, 32, { fit: 'cover' }).png().toBuffer();
 
 function buildIco(images) {
   const count = images.length;

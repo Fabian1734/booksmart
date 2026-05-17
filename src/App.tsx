@@ -5112,9 +5112,12 @@ function Dashboard({ user, onLogout }: { user: any, onLogout: () => void }) {
       {/* Header */}
       <div style={{ backgroundColor: '#1A1A1A', padding: '14px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '700px', margin: '0 auto' }}>
-          <div>
-            <h1 style={{ color: '#F5F0E8', letterSpacing: '3px', margin: 0, fontSize: '18px', fontWeight: '500', fontFamily: fontDisplay }}>BOOKSMART</h1>
-            <TotalQuestionsCount />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <img src="/logo192.png" alt="Booksmart" width={40} height={40} style={{ borderRadius: 10, display: 'block', flexShrink: 0 }} />
+            <div>
+              <h1 style={{ color: '#F5F0E8', letterSpacing: '3px', margin: 0, fontSize: '18px', fontWeight: '500', fontFamily: fontDisplay }}>BOOKSMART</h1>
+              <TotalQuestionsCount />
+            </div>
           </div>
         </div>
       </div>
@@ -5342,8 +5345,13 @@ function App() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.bg, fontFamily: fontBody, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ textAlign: 'center', maxWidth: '500px', width: '100%' }}>
-        <div style={{ fontSize: '48px', marginBottom: '8px' }}>📚</div>
-        <h1 style={{ fontSize: 'clamp(36px, 10vw, 52px)', fontWeight: '900', color: colors.primary, margin: '0 0 8px 0', letterSpacing: '2px', fontFamily: fontDisplay }}>BOOKSMART</h1>
+        <img
+          src="/logo512.png"
+          alt="Booksmart"
+          width={160}
+          height={160}
+          style={{ borderRadius: 28, display: 'block', margin: '0 auto 24px', boxShadow: '0 8px 32px rgba(27, 67, 50, 0.2)' }}
+        />
         <p style={{ fontSize: 'clamp(13px, 3vw, 16px)', color: colors.muted, marginBottom: '48px', lineHeight: '1.5' }}>
           <span style={{ fontWeight: '600', color: colors.primary }}>{totalQuestions > 0 ? totalQuestions : '...'}</span> Fragen zur Geschichte der Schweiz, Weltgeschichte und mehr.
         </p>        <button style={btnPrimary} onClick={() => setMode('login')}>Anmelden</button>
